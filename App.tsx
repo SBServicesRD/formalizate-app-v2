@@ -7,6 +7,7 @@ import StepProgressBar from './components/StepProgressBar';
 import StepTypeSelection from './components/StepTypeSelection';
 import StepA from './components/StepA';
 import PostPaymentWelcome from './components/PostPaymentWelcome';
+import SignupPostPaymentPage from './components/SignupPostPaymentPage';
 import PostPaymentForm from './components/PostPaymentForm';
 import SuccessPage from './components/SuccessPage';
 import DashboardPage from './components/DashboardPage';
@@ -323,7 +324,8 @@ const App: React.FC = () => {
                      </Suspense>
                  );
             case AppStep.Login:
-                return <LoginPage onLogin={handleStepLogin} />;
+                // Post-pago: SOLO signup, nunca login
+                return <SignupPostPaymentPage onSignupComplete={handleStepLogin} />;
             case AppStep.PostPaymentWelcome:
                 return <PostPaymentWelcome onStartForm={goToNextStep} />;
             case AppStep.PostPaymentForm:

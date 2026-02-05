@@ -100,8 +100,7 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onP
                 } else {
                     throw new Error("No rate data");
                 }
-            } catch (err) {
-                console.error("Error fetching exchange rate, using fallback:", err);
+            } catch {
                 setExchangeRate(SAFE_FALLBACK_RATE); 
             } finally {
                 setIsLoadingRate(false);
@@ -131,7 +130,6 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onP
     const handlePayPalApprove = async (data: any, actions: any) => {
         try {
             const details = await actions.order.capture();
-            console.log("PayPal Payment Captured:", details);
             
             updateFormData({ 
                 paymentMethod: 'paypal', 
@@ -140,13 +138,10 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onP
             });
 
             // 🔗 VENTA HUÉRFANA: Guardar ID de transacción PayPal para vincular después del login
-            // Esto permite recuperar la venta si el usuario recarga antes de registrarse
             localStorage.setItem(ORPHAN_SALE_KEY, details.id);
-            console.log('💾 ID de venta guardado para vinculación:', details.id);
 
             onPaymentSuccess();
-        } catch (err) {
-            console.error("PayPal Capture Error:", err);
+        } catch {
             setError("Hubo un error al procesar el pago. Por favor contacta soporte.");
         }
     };
@@ -180,17 +175,14 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onP
         ];
 
         if (message === "[object Object]" || ignoredMessages.some(ignored => lowerMsg.includes(ignored))) {
-            console.warn("Suppressed PayPal Error:", message);
             return;
         }
 
-        console.error("PayPal Fatal Error:", err);
         alert("Error de PayPal: " + message + "\n\nPor favor intenta de nuevo o usa Transferencia Bancaria.");
         setError("Hubo un error al procesar el pago con PayPal. Por favor intenta de nuevo o usa Transferencia.");
     };
 
     const handlePayPalCancel = () => {
-        console.log("PayPal payment cancelled by user");
         // No mostramos error ya que el usuario canceló intencionalmente
     };
 
@@ -274,10 +266,8 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onP
             });
 
             // 🔗 VENTA HUÉRFANA: Generar ID temporal único para transferencias
-            // Formato: transfer_timestamp_randomId para garantizar unicidad
             const tempSaleId = `transfer_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
             localStorage.setItem(ORPHAN_SALE_KEY, tempSaleId);
-            console.log('💾 ID de venta temporal guardado para vinculación:', tempSaleId);
 
             onPaymentSuccess();
             setShowBankModal(false);

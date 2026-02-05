@@ -14,10 +14,9 @@ const Chatbot: React.FC = () => {
                 // Intento de reproducir sonido (Manejo de errores para navegadores estrictos)
                 const audio = new Audio('/notification.mp3');
                 audio.volume = 0.5; // Volumen al 50% para no asustar
-                audio.play().catch(error => {
+                audio.play().catch(() => {
                     // Si el navegador bloquea el autoplay (común en Chrome/Safari), 
                     // simplemente ignoramos el error y abrimos el chat en silencio.
-                    console.log("Audio autoplay bloqueado por el navegador (comportamiento normal).");
                 });
 
                 hasOpenedRef.current = true;
@@ -78,8 +77,7 @@ const Chatbot: React.FC = () => {
 
             const data = await response.json();
             setMessages(prev => [...prev, { role: 'model', text: data.response || "Lo siento, no pude procesar eso." }]);
-        } catch (error) {
-            console.error("Error en chat:", error);
+        } catch {
             setMessages(prev => [...prev, { role: 'model', text: "Tuve un pequeño problema técnico. ¿Podrías repetirlo?" }]);
         } finally {
             setIsTyping(false);

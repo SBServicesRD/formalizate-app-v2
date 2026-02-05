@@ -49,13 +49,11 @@ const resolveUpload = async (
     if (isBrowserFile(fileInput)) {
         try {
             return await uploadFileAndGetUrl(fileInput, folder, description);
-        } catch (error) {
-            console.error(`Error subiendo ${description}`, error);
+        } catch {
             throw new Error(`No se pudo subir ${description}.`);
         }
     }
 
-    console.warn(`${description} no es un File válido. Se omite este campo.`);
     return null;
 };
 
@@ -109,8 +107,6 @@ const serializeTitulars = async (titulars: Titular[] = []): Promise<SerializedTi
 };
 
 export const saveFullApplication = async (data: AppFormData): Promise<any> => {
-    console.log('Iniciando guardado de solicitud');
-
     const {
         logoFile,
         onapiCertificate,
@@ -146,8 +142,6 @@ export const saveFullApplication = async (data: AppFormData): Promise<any> => {
         delete payloadRecord.identityDocFront;
         delete payloadRecord.identityDocBack;
 
-        console.log('Enviando solicitud con userId:', currentUser?.uid || 'NO AUTENTICADO');
-
         const response = await fetch('/api/procesar-solicitud', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -161,7 +155,6 @@ export const saveFullApplication = async (data: AppFormData): Promise<any> => {
 
         return await response.json();
     } catch (error) {
-        console.error('Error guardando la solicitud', error);
         if (error instanceof Error) {
             throw error;
         }
@@ -184,7 +177,6 @@ export const linkSaleToUser = async (
     userEmail?: string
 ): Promise<boolean> => {
     if (!saleId || !userId) {
-        console.warn('⚠️ linkSaleToUser: saleId o userId vacío');
         return false;
     }
 
@@ -198,10 +190,8 @@ export const linkSaleToUser = async (
             status: 'vinculado' // Actualiza estado para indicar que ya tiene dueño
         });
 
-        console.log(`Venta ${saleId} vinculada exitosamente al usuario ${userId}`);
         return true;
-    } catch (error) {
-        console.error('Error vinculando venta al usuario:', error);
+    } catch {
         // No lanzamos error para no romper el flujo de auth
         return false;
     }

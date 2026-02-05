@@ -199,12 +199,9 @@ const BentoGridSection = () => {
                 
                 if (data.reviews && data.reviews.length > 0) {
                     setReviews(data.reviews);
-                    console.log(`✅ Cargadas ${data.reviews.length} reseñas de Google`);
-                } else {
-                    console.log('ℹ️ Sin reseñas de Google, usando fallback');
                 }
-            } catch (error) {
-                console.error('Error fetching reviews:', error);
+            } catch {
+                // Silently fall back to static testimonials
             } finally {
                 setIsLoadingReviews(false);
             }
