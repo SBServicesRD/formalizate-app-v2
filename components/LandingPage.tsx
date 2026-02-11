@@ -751,7 +751,7 @@ const PaymentTrustSection = () => (
                     </div>
                     <div className="h-6 w-px bg-gray-200 mx-4 hidden md:block"></div>
                     <div className="flex space-x-4 items-center justify-center">
-                         <img src="https://storage.googleapis.com/pics_html/visa-secure_blu_2021%20-%20Copy%20-%20Cop1.png" alt="Visa Secure" className="h-6 w-auto" width="48" height="24" loading="lazy" decoding="async" />
+                         <img src="https://storage.googleapis.com/pics_html/verified-by-visa-seeklogo.svg" alt="Visa Secure" className="h-6 w-auto" width="48" height="24" loading="lazy" decoding="async" />
                          <div className="flex items-center space-x-1">
                             <img src="https://storage.googleapis.com/pics_html/Mastercard-logo.svg" alt="ID Check" className="h-6 w-auto" width="48" height="24" loading="lazy" decoding="async" />
                             <span className="text-[10px] font-bold text-gray-600 uppercase tracking-wide">ID Check</span>

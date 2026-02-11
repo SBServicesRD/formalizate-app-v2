@@ -483,21 +483,15 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onP
                 <p className="text-xs text-gray-400 uppercase tracking-widest mb-4 font-bold">Transacción Protegida SSL</p>
                 <div className="flex items-center space-x-6 opacity-80 hover:opacity-100 transition-opacity grayscale hover:grayscale-0">
                     {/* Badge Visa Secure: preparado para versión WebP con fallback PNG actual */}
-                    <picture>
-                        <source
-                            srcSet="https://storage.googleapis.com/pics_html/visa-secure_blu_2021%20-%20Copy%20-%20Cop1.webp"
-                            type="image/webp"
-                        />
-                        <img 
-                            src="https://storage.googleapis.com/pics_html/visa-secure_blu_2021%20-%20Copy%20-%20Cop1.png" 
-                            alt="Verified by Visa" 
-                            className="h-10 w-auto"
-                            width={120}
-                            height={40}
-                            loading="lazy"
-                            decoding="async"
-                        />
-                    </picture>
+                    <img 
+                        src="https://storage.googleapis.com/pics_html/verified-by-visa-seeklogo.svg" 
+                        alt="Verified by Visa" 
+                        className="h-10 w-auto"
+                        width={120}
+                        height={40}
+                        loading="lazy"
+                        decoding="async"
+                    />
                     <div className="flex items-center space-x-2 border-l border-gray-300 pl-6">
                         <img 
                             src="https://storage.googleapis.com/pics_html/Mastercard-logo.svg" 
