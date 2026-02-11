@@ -500,7 +500,7 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onP
                     </picture>
                     <div className="flex items-center space-x-2 border-l border-gray-300 pl-6">
                         <img 
-                            src="https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg" 
+                            src="https://storage.googleapis.com/pics_html/Mastercard-logo.svg" 
                             alt="MasterCard" 
                             className="h-8 w-auto" 
                             width={96}

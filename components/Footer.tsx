@@ -65,9 +65,9 @@ const Footer: React.FC<FooterProps> = ({ setPage }) => {
                     <div className="flex flex-col items-center md:items-start">
                         <span className="text-xs text-sbs-gray-400 uppercase tracking-widest mb-3">Pagos Seguros</span>
                         <div className="flex items-center space-x-4">
-                            <img src="https://upload.wikimedia.org/wikipedia/commons/5/5e/Visa_Inc._logo.svg" alt="Visa" className="h-5 w-auto brightness-0 invert opacity-80 hover:opacity-100 transition-opacity" />
-                            <img src="https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg" alt="MasterCard" className="h-5 w-auto brightness-0 invert opacity-80 hover:opacity-100 transition-opacity" />
-                            <img src="https://upload.wikimedia.org/wikipedia/commons/b/b5/PayPal.svg" alt="PayPal" className="h-5 w-auto brightness-0 invert opacity-80 hover:opacity-100 transition-opacity" />
+                            <img src="https://storage.googleapis.com/pics_html/Visa_Inc._logo.svg" alt="Visa" className="h-5 w-auto brightness-0 invert opacity-80 hover:opacity-100 transition-opacity" />
+                            <img src="https://storage.googleapis.com/pics_html/Mastercard-logo.svg" alt="MasterCard" className="h-5 w-auto brightness-0 invert opacity-80 hover:opacity-100 transition-opacity" />
+                            <img src="https://storage.googleapis.com/pics_html/PayPal.svg" alt="PayPal" className="h-5 w-auto brightness-0 invert opacity-80 hover:opacity-100 transition-opacity" />
                             <div className="flex items-center opacity-80 hover:opacity-100 transition-opacity">
                                 <svg className="h-6 w-6 text-white mr-1.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-label="Transferencia Bancaria">
                                     <path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/>
@@ -81,11 +81,11 @@ const Footer: React.FC<FooterProps> = ({ setPage }) => {
                         <span className="text-xs text-sbs-gray-400 uppercase tracking-widest mb-3">Protección de Datos</span>
                         <div className="flex items-center space-x-4">
                             <div className="flex items-center opacity-80 hover:opacity-100 transition-opacity">
-                                <img src="https://upload.wikimedia.org/wikipedia/commons/5/5e/Visa_Inc._logo.svg" alt="Visa" className="h-4 w-auto brightness-0 invert mr-1.5" />
+                                <img src="https://storage.googleapis.com/pics_html/Visa_Inc._logo.svg" alt="Visa" className="h-4 w-auto brightness-0 invert mr-1.5" />
                                 <span className="text-xs font-bold text-white leading-none">Secure</span>
                             </div>
                             <div className="flex items-center opacity-80 hover:opacity-100 transition-opacity">
-                                <img src="https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg" alt="MasterCard" className="h-4 w-auto brightness-0 invert mr-1.5" />
+                                <img src="https://storage.googleapis.com/pics_html/Mastercard-logo.svg" alt="MasterCard" className="h-4 w-auto brightness-0 invert mr-1.5" />
                                 <span className="text-xs font-bold text-white leading-none">ID Check</span>
                             </div>
                             <div className="flex items-center text-sbs-gray-300 opacity-80 hover:opacity-100 transition-opacity">

@@ -746,14 +746,14 @@ const PaymentTrustSection = () => (
                              </svg>
                              <span className="text-xs font-bold text-gray-700 leading-none">Transferencias</span>
                          </div>
-                         <img src="https://upload.wikimedia.org/wikipedia/commons/5/5e/Visa_Inc._logo.svg" alt="Visa" className="h-6 w-auto" width="48" height="24" loading="lazy" decoding="async" />
-                         <img src="https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg" alt="MasterCard" className="h-6 w-auto" width="48" height="24" loading="lazy" decoding="async" />
+                         <img src="https://storage.googleapis.com/pics_html/Visa_Inc._logo.svg" alt="Visa" className="h-6 w-auto" width="48" height="24" loading="lazy" decoding="async" />
+                         <img src="https://storage.googleapis.com/pics_html/Mastercard-logo.svg" alt="MasterCard" className="h-6 w-auto" width="48" height="24" loading="lazy" decoding="async" />
                     </div>
                     <div className="h-6 w-px bg-gray-200 mx-4 hidden md:block"></div>
                     <div className="flex space-x-4 items-center justify-center">
                          <img src="https://storage.googleapis.com/pics_html/visa-secure_blu_2021%20-%20Copy%20-%20Cop1.png" alt="Visa Secure" className="h-6 w-auto" width="48" height="24" loading="lazy" decoding="async" />
                          <div className="flex items-center space-x-1">
-                            <img src="https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg" alt="ID Check" className="h-6 w-auto" width="48" height="24" loading="lazy" decoding="async" />
+                            <img src="https://storage.googleapis.com/pics_html/Mastercard-logo.svg" alt="ID Check" className="h-6 w-auto" width="48" height="24" loading="lazy" decoding="async" />
                             <span className="text-[10px] font-bold text-gray-600 uppercase tracking-wide">ID Check</span>
                          </div>
                     </div>

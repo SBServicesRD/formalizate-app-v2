@@ -19,16 +19,20 @@ const helmet = require('helmet');
 
 // --- CONFIGURACIÓN DE RATE LIMITING ---
 const RATE_LIMIT_CONFIG = {
-  CHAT: {
-    WINDOW_MS: 15 * 60 * 1000, // 15 minutos
-    MAX: 15, // Máximo 15 peticiones por ventana
-    MESSAGE: {
-      error: 'Too many requests',
-      message: 'Has alcanzado el límite de consultas gratuitas. Para asesoría ilimitada, adquiere uno de nuestros planes.'
-    },
-    STANDARD_HEADERS: true,
-    LEGACY_HEADERS: false
-  },
+  // ============================================
+  // CHATBOT IA — DESACTIVADO TEMPORALMENTE
+  // Reactivar para blog/SEO (consultas informativas)
+  // ============================================
+  // CHAT: {
+  //   WINDOW_MS: 15 * 60 * 1000, // 15 minutos
+  //   MAX: 15, // Máximo 15 peticiones por ventana
+  //   MESSAGE: {
+  //     error: 'Too many requests',
+  //     message: 'Has alcanzado el límite de consultas gratuitas. Para asesoría ilimitada, adquiere uno de nuestros planes.'
+  //   },
+  //   STANDARD_HEADERS: true,
+  //   LEGACY_HEADERS: false
+  // },
   GLOBAL: {
     WINDOW_MS: 15 * 60 * 1000, // 15 minutos
     MAX: 100, // Máximo 100 peticiones por ventana
@@ -49,63 +53,14 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 // --- CONFIGURACIÓN DEL SERVIDOR ---
 const PORT = process.env.PORT || 8080;
 
-// System Prompt v9 - CEREBRO COMPLETO + NAVEGACIÓN SPA + CORRECCIÓN DE PRODUCTO
-const FORMALIZATE_SYSTEM_PROMPT = `ROL: Eres el Consultor Senior de Negocios de Formalizate.app.
-OBJETIVO: Aclarar dudas, vencer objeciones y GUIAR al cliente a la sección de "Planes" de esta misma página.
-CONTEXTO TÉCNICO: Estás en una Single Page Application (SPA). NO existen links directos. El usuario debe hacer scroll o clic en el menú "Planes".
-
-═══════════════════════════════════════════════
-🛑 REGLAS DE FORMATO (CRÍTICO - SI FALLAS AQUÍ, FALLA TODO)
-═══════════════════════════════════════════════
-1. CERO ETIQUETAS: Jamás escribas "Tú:", "Julia:", "Bot:". Solo entrega el texto.
-2. NO REPITAS SALUDOS: Si el usuario dice "Hola", IGNORA tu saludo anterior. Ve al grano.
-3. ESTILO WHATSAPP: Respuestas cortas, fluidas y profesionales. Máximo 45 palabras.
-
-═══════════════════════════════════════════════
-🧠 BASE DE CONOCIMIENTO (LA VERDAD ABSOLUTA)
-═══════════════════════════════════════════════
-
-🟢 PLAN STARTER (RD$27,900) - "Solo Legalidad"
-   - QUÉ TRAE: Constitución S.R.L. + RNC + Registro Mercantil + Estatutos + Lista Suscriptores.
-   - PARA QUIÉN: Quien tiene presupuesto mínimo y solo quiere evitar multas.
-   - LO MALO: NO trae Kit Bancario. El banco probablemente rechace la apertura de cuenta si van solos.
-
-🔵 PLAN ESSENTIAL (RD$41,900) - "El Recomendado (Best Seller)"
-   - QUÉ TRAE: Todo lo del Starter + KIT BANCARIO.
-   - QUÉ ES EL KIT BANCARIO: Carpeta financiera blindada (Proyecciones, Referencias, Carta de Gerencia) para que el banco NO rechace la cuenta.
-   - IMPORTANTE: NO incluye página web.
-   - PARA QUIÉN: Quien necesita COBRAR y abrir cuenta de banco rápido.
-
-🟣 PLAN UNLIMITECH (RD$64,900) - "Gobierno y Aduanas"
-   - QUÉ TRAE: Todo lo del Essential + RPE (Proveedor del Estado) + Registro Aduanal (DGA).
-   - PARA QUIÉN: Quien va a licitar con el gobierno o importar mercancía (China/USA).
-
-═══════════════════════════════════════════════
-⚙️ PROTOCOLO DE CIERRE (NAVEGACIÓN SPA)
-═══════════════════════════════════════════════
-Cuando el cliente diga "SÍ" o elija un plan:
-1. Felicítalo por la decisión.
-2. INDICA LA RUTA: Dile que suba/baje a la sección "Planes" y haga clic en el botón de su plan.
-3. SOPORTE: Pide el WhatsApp "por si tienes dudas llenando el formulario de registro".
-
-═══════════════════════════════════════════════
-🛡️ MANEJO DE OBJECIONES (ARGUMENTARIO)
-═══════════════════════════════════════════════
-- "Es caro": "Es un pago único. Una multa de DGII o un cierre de cuenta sale más caro. Con el Starter (27k) te blindas legalmente. ¿Te ayudo a ubicar ese plan?"
-- "Tengo miedo a la DGII": "Te entregamos la empresa en cero y te explicamos tus obligaciones. Si quieres, déjame tu WhatsApp y te explico mejor por audio."
-- "Diferencia Starter vs Essential": "El Starter es solo papeles legales. El Essential te asegura la CUENTA DE BANCO con el Kit Bancario. Sin cuenta no cobras. ¿Cuál prefieres?"
-
-═══════════════════════════════════════════════
-MODELO DE RESPUESTA (EJEMPLOS)
-═══════════════════════════════════════════════
-[User]: "Hola"
-[Bot]: "¿Qué tal? Cuéntame, ¿qué tipo de negocio vas a formalizar? ¿Servicios o venta de productos?"
-
-[User]: "Quiero el Essential"
-[Bot]: "¡Excelente elección! Con ese aseguras tu cuenta bancaria. Busca la sección de 'Planes' en el menú de arriba y dale al botón del plan Essential. (Déjame tu WhatsApp por si necesitas ayuda en el registro)."
-
-[User]: "Necesito importar"
-[Bot]: "Para importar necesitas registro en Aduanas. El plan Unlimitech (RD$64,900) es el único que lo incluye, junto con el RPE. ¿Te oriento para contratar ese?"`;
+// ============================================
+// CHATBOT IA — SYSTEM PROMPT (DESACTIVADO TEMPORALMENTE)
+// Reactivar para blog/SEO (consultas informativas, max 10 interacciones)
+// ============================================
+// const FORMALIZATE_SYSTEM_PROMPT = `ROL: Eres el Consultor Senior de Negocios de Formalizate.app.
+// OBJETIVO: Aclarar dudas, vencer objeciones y GUIAR al cliente a la sección de "Planes" de esta misma página.
+// ... (prompt completo preservado en components/Chatbot.tsx)
+// `;
 
 //============================================
 // ZONA DE FIREBASE
@@ -209,13 +164,15 @@ const db = getFirestore(firebaseApp, 'formalizate-app-prod'); // Especificar bas
 // ============================================
 // RATE LIMITERS (usando constantes de configuración)
 // ============================================
-const chatRateLimiter = rateLimit({
-  windowMs: RATE_LIMIT_CONFIG.CHAT.WINDOW_MS,
-  max: RATE_LIMIT_CONFIG.CHAT.MAX,
-  message: RATE_LIMIT_CONFIG.CHAT.MESSAGE,
-  standardHeaders: RATE_LIMIT_CONFIG.CHAT.STANDARD_HEADERS,
-  legacyHeaders: RATE_LIMIT_CONFIG.CHAT.LEGACY_HEADERS,
-});
+
+// CHATBOT IA — DESACTIVADO TEMPORALMENTE
+// const chatRateLimiter = rateLimit({
+//   windowMs: RATE_LIMIT_CONFIG.CHAT.WINDOW_MS,
+//   max: RATE_LIMIT_CONFIG.CHAT.MAX,
+//   message: RATE_LIMIT_CONFIG.CHAT.MESSAGE,
+//   standardHeaders: RATE_LIMIT_CONFIG.CHAT.STANDARD_HEADERS,
+//   legacyHeaders: RATE_LIMIT_CONFIG.CHAT.LEGACY_HEADERS,
+// });
 
 const globalRateLimiter = rateLimit({
   windowMs: RATE_LIMIT_CONFIG.GLOBAL.WINDOW_MS,
@@ -229,9 +186,9 @@ const globalRateLimiter = rateLimit({
 app.use(globalRateLimiter);
 
 // ============================================
-// ALMACÉN DE HISTORIAL DE CHAT
+// ALMACÉN DE HISTORIAL DE CHAT — DESACTIVADO TEMPORALMENTE
 // ============================================
-const chatHistories = new Map();
+// const chatHistories = new Map();
 
 // ============================================
 // API DE VERIFICACIÓN DE PAGO
@@ -295,165 +252,23 @@ app.get('/api/test-gemini', async (req, res) => {
 });
 
 // ============================================
-// API PARA CHATBOT CON GEMINI AI (usando REST API directamente)
-// Rate Limited: 15 peticiones por 15 minutos (express-rate-limit)
-// Protegido contra Prompt Injection
+// API PARA CHATBOT CON GEMINI AI — DESACTIVADO TEMPORALMENTE
+// Reactivar para blog/SEO (consultas informativas, max 10 interacciones)
+// El componente frontend Chatbot.tsx se conserva intacto para reactivación futura.
 // ============================================
-app.post('/api/chat', chatRateLimiter, async (req, res) => {
-  try {
-    const { message, sessionId = 'default' } = req.body;
-
-    if (!message || typeof message !== 'string') {
-      return res.status(400).json({ error: 'El mensaje es requerido' });
-    }
-
-    // Validar que la API key esté configurada
-    if (!GEMINI_API_KEY || GEMINI_API_KEY === '') {
-      console.warn('⚠️ Gemini API Key no configurada');
-      return res.json({ 
-        response: 'Lo siento, el servicio de chat no está disponible en este momento. Por favor, contáctanos por WhatsApp.',
-        error: 'not_configured' 
-      });
-    }
-
-    // SANITIZACIÓN DE INPUT: Protección contra Prompt Injection
-    // Eliminar caracteres peligrosos y limitar longitud antes de enviar a Gemini
-    const sanitizedMessage = message
-      .replace(/[\x00-\x1F\x7F-\x9F]/g, '') // Eliminar caracteres de control
-      .replace(/[<>{}[\]]/g, '') // Eliminar caracteres peligrosos que podrían usarse para inyección
-      .replace(/javascript:/gi, '') // Eliminar javascript: protocol
-      .replace(/on\w+\s*=/gi, '') // Eliminar event handlers
-      .substring(0, 1000) // Limitar longitud máxima (previene payloads enormes)
-      .trim();
-
-    // Si después de sanitizar el mensaje está vacío, rechazar
-    if (!sanitizedMessage || sanitizedMessage.length === 0) {
-      return res.status(400).json({ 
-        error: 'El mensaje contiene caracteres no permitidos o está vacío' 
-      });
-    }
-
-    // Obtener o crear historial de chat para esta sesión
-    if (!chatHistories.has(sessionId)) {
-      chatHistories.set(sessionId, []);
-    }
-    const history = chatHistories.get(sessionId);
-
-    // Construir el contenido con historial y system prompt (usar mensaje sanitizado)
-    const contents = [
-      {
-        role: 'user',
-        parts: [{ text: FORMALIZATE_SYSTEM_PROMPT + '\n\nConsulta del usuario: ' + sanitizedMessage }]
-      }
-    ];
-
-    // Agregar historial previo si existe (sanitizar historial también)
-    if (history.length > 0) {
-      const sanitizedHistory = history.map(h => {
-        const sanitizedText = h.text
-          .replace(/[\x00-\x1F\x7F-\x9F]/g, '')
-          .replace(/[<>{}[\]]/g, '')
-          .substring(0, 500)
-          .trim();
-        return `${h.role === 'user' ? 'Usuario' : 'Asesor'}: ${sanitizedText}`;
-      }).join('\n');
-      
-      contents[0].parts[0].text = FORMALIZATE_SYSTEM_PROMPT + '\n\nHistorial de conversación:\n' + 
-        sanitizedHistory +
-        '\n\nNueva consulta del usuario: ' + sanitizedMessage;
-    }
-
-    // Llamada directa a la API REST de Gemini (usando gemini-2.0-flash)
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
-    
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: contents,
-        generationConfig: {
-          maxOutputTokens: 300,
-          temperature: 0.2,
-        }
-      })
-    });
-
-    const data = await response.json();
-
-    // Verificar errores de la API
-    if (data.error) {
-      console.error('❌ Gemini API Error:', data.error);
-      return res.json({ 
-        response: 'Lo siento, tuve un problema técnico. Por favor, contáctanos por WhatsApp.',
-        error: data.error.message 
-      });
-    }
-
-    // Extraer texto de respuesta
-    const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text || 
-      'Lo siento, no pude procesar tu consulta. ¿Podrías reformularla?';
-
-    // Actualizar historial (usar mensaje sanitizado)
-    history.push({ role: 'user', text: sanitizedMessage });
-    history.push({ role: 'model', text: responseText });
-
-    // Limitar historial a últimos 10 intercambios
-    if (history.length > 20) {
-      chatHistories.set(sessionId, history.slice(-20));
-    }
-
-    // 📊 LOGGING SILENCIOSO PARA AUDITORÍA (agrupa por sesión)
-    // Fire-and-forget: no esperamos a que termine para responder al usuario
-    const sessionRef = db.collection('chat_sessions').doc(sessionId);
-    const now = new Date();
-    
-    sessionRef.get()
-      .then(doc => {
-        if (doc.exists) {
-          // Sesión existente: agregar mensajes al array
-          return sessionRef.update({
-            messages: admin.firestore.FieldValue.arrayUnion(
-              { role: 'user', text: message, timestamp: now },
-              { role: 'model', text: responseText, timestamp: now }
-            ),
-            lastActivity: now,
-            messageCount: admin.firestore.FieldValue.increment(2)
-          });
-        } else {
-          // Nueva sesión: crear documento completo
-          return sessionRef.set({
-            createdAt: now,
-            lastActivity: now,
-            userId: req.body.userId || 'anónimo',
-            metadata: {
-              ip: req.ip || req.connection?.remoteAddress || 'unknown',
-              userAgent: req.headers['user-agent'] || 'unknown'
-            },
-            messages: [
-              { role: 'user', text: message, timestamp: now },
-              { role: 'model', text: responseText, timestamp: now }
-            ],
-            messageCount: 2
-          });
-        }
-      })
-      .then(() => console.log(`📊 Sesión ${sessionId} actualizada`))
-      .catch(err => console.error('⚠️ Error guardando chat session (no crítico):', err.message));
-
-    // PII Security: No imprimir contenido del mensaje del usuario, solo ID de sesión
-    console.log(`💬 Chat procesado - Sesión ID: ${sessionId}`);
-    res.json({ response: responseText });
-
-  } catch (error) {
-    console.error('❌ Error en Gemini chat:', error);
-    res.json({ 
-      response: 'Tuve un pequeño problema técnico. ¿Podrías repetir tu pregunta?',
-      error: error.message 
-    });
-  }
-});
+// app.post('/api/chat', chatRateLimiter, async (req, res) => {
+//   try {
+//     const { message, sessionId = 'default' } = req.body;
+//     if (!message || typeof message !== 'string') {
+//       return res.status(400).json({ error: 'El mensaje es requerido' });
+//     }
+//     // ... (código completo del endpoint preservado en historial de git)
+//     // Commit de referencia: 9a19054
+//   } catch (error) {
+//     console.error('Error en Gemini chat:', error);
+//     res.json({ response: 'Error técnico.', error: error.message });
+//   }
+// });
 
 // ============================================
 // FUNCIÓN DE SANITIZACIÓN DE SALIDA (Anti-XSS, Anti-Prompt Injection)

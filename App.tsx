@@ -14,7 +14,7 @@ import DashboardPage from './components/DashboardPage';
 import LoginPage from './components/LoginPage';
 import Header from './components/Header';
 import Footer from './components/Footer';
-import Chatbot from './components/Chatbot';
+import WhatsAppWidget from './components/WhatsAppWidget';
 import SummaryPage from './components/SummaryPage';
 import { AppStep, FormData } from './types';
 import { MANAGEMENT_DURATION, FISCAL_CLOSING_DATE, PackageName } from './constants';
@@ -480,7 +480,7 @@ const App: React.FC = () => {
             <div className={`${isLandingPage ? '' : 'pt-0'}`}>
                 {renderPageContent()}
             </div>
-            <Chatbot />
+            <WhatsAppWidget />
             <Footer setPage={setPage} />
         </div>
     );
