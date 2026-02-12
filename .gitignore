@@ -27,6 +27,7 @@ dist-ssr
 .env
 .env.*
 functions/.env
+env.yaml
 
 # Firebase / GCP credentials
 serviceAccountKey.json
