@@ -221,6 +221,13 @@ const SummaryPage: React.FC<SummaryPageProps> = ({ formData, nextStep, prevStep 
                                 </div>
                             </div>
 
+                            {/* Aviso legal: Beneficiarios Finales (Ley 155-17) */}
+                            <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-6">
+                                <p className="text-[10px] text-gray-500 leading-relaxed">
+                                    <strong className="text-gray-600">Aviso legal:</strong> En cumplimiento de la Ley No. 155-17, la información de socios y beneficiarios finales proporcionada podrá ser utilizada para verificaciones de debida diligencia y, cuando la ley lo exija, reportada a las autoridades competentes. Formalizate.app podrá solicitar documentación adicional si fuese necesario.
+                                </p>
+                            </div>
+
                             <button 
                                 onClick={nextStep} 
                                 className="w-full py-5 bg-sbs-blue text-white font-bold rounded-full shadow-xl hover:shadow-glow-blue hover:-translate-y-0.5 transition-all duration-300 active:scale-95 flex items-center justify-center"

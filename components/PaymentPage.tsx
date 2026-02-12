@@ -411,7 +411,7 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onP
                          <Check className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white opacity-0 peer-checked:opacity-100 transition-opacity" strokeWidth={3} />
                     </div>
                     <span className="ml-3 text-sm text-text-secondary group-hover:text-text-primary transition-colors select-none">
-                        He leído y acepto los <span className="font-bold text-sbs-blue underline">Términos, Condiciones y Políticas de Reembolso</span>.
+                        He leído y acepto los <span className="font-bold text-sbs-blue underline">Términos y Condiciones</span>, la <span className="font-bold text-sbs-blue underline">Política de Privacidad</span> y la <span className="font-bold text-sbs-blue underline">Política de Reembolso</span>, incluyendo el tratamiento de mis datos personales para la constitución de mi empresa.
                     </span>
                 </label>
             </div>

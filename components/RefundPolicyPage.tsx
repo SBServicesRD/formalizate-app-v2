@@ -6,7 +6,7 @@ const RefundPolicyPage: React.FC = () => {
             <div className="max-w-3xl mx-auto">
                 <h1 className="text-3xl font-extrabold text-sbs-blue mb-6">Política de Reembolso y Entrega</h1>
                 <div className="prose prose-lg text-sbs-gray-700 max-w-none space-y-4">
-                    <p><strong>Última actualización:</strong> {new Date().toLocaleDateString('es-DO')}</p>
+                    <p><strong>Última actualización:</strong> 10 de febrero de 2026</p>
                     
                     <h2 className="text-xl font-bold text-sbs-blue">1. General</h2>
                     <p>

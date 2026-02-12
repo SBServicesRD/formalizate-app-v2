@@ -581,10 +581,26 @@ const PricingTable: React.FC<{ onSelect: (pkg: PackageName) => void }> = ({ onSe
                 <div className="flex items-center">
                     {feature}
                     <PricingTooltip 
-                        title="Facturación Electrónica" 
+                        title="Facturación Electrónica (e-CF)" 
                         items={[
-                            "Requisito obligatorio para facturar electrónicamente.",
-                            "Mandatorio a partir del 15 de mayo de 2026."
+                            "Certificado digital válido emitido por entidad autorizada.",
+                            "Requisito obligatorio para facturar electrónicamente en el sistema e-CF de la DGII.",
+                            "Mandatorio a partir del 15 de mayo de 2026 (Ley 32-23)."
+                        ]} 
+                    />
+                </div>
+            );
+        }
+        if (feature === "Comprobantes Fiscales") {
+            return (
+                <div className="flex items-center">
+                    {feature}
+                    <PricingTooltip 
+                        title="NCF / Comprobantes Fiscales" 
+                        items={[
+                            "Solicitud y habilitación de NCF ante la DGII.",
+                            "Emisión dentro del sistema oficial de facturación electrónica (e-CF).",
+                            "Tipos disponibles: Crédito Fiscal, Consumidor Final, entre otros."
                         ]} 
                     />
                 </div>
