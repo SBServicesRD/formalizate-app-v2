@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { FormData } from '../types';
 import { NCF_OPTIONS, FISCAL_CLOSING_DATE, ALLOWED_FILE_TYPES } from '../constants';
 import { validateRequired, formatPhoneNumber, validateEmail, formatDateMask, validateDate, validatePhoneNumber, sanitizeInput } from '../utils/validation';
@@ -272,6 +272,24 @@ const PostPaymentForm: React.FC<PostPaymentFormProps> = ({ formData, updateFormD
             };
 
             await saveFullApplication(sanitizedFormData);
+
+            // Google Ads conversion tracking (post-pago completado)
+            const conversionValueByPackage: Record<string, number> = {
+                'Starter Pro': 444,
+                'Essential 360': 667,
+                'Unlimitech': 1033
+            };
+            const valueUsd = conversionValueByPackage[formData.packageName || 'Essential 360'] ?? 667;
+            const transactionId = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
+            if (typeof window !== 'undefined' && typeof (window as Window & { gtag?: (...args: unknown[]) => void }).gtag === 'function') {
+                (window as Window & { gtag: (...args: unknown[]) => void }).gtag('event', 'conversion', {
+                    send_to: 'AW-17948166548/PrakCPafovgbEJSTre5C',
+                    value: valueUsd,
+                    currency: 'USD',
+                    transaction_id: transactionId
+                });
+            }
+
             onComplete();
             return;
         } catch (error) {
