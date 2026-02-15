@@ -99,6 +99,8 @@ app.use(
           "'unsafe-inline'",
           "'unsafe-eval'",
           "https://*.googletagmanager.com",
+          "https://www.googleadservices.com",
+          "https://*.doubleclick.net",
           "https://*.facebook.net",
           "https://*.paypal.com",
           "https://*.gstatic.com",
@@ -106,10 +108,28 @@ app.use(
           "https://*.google.com", // Abarca apis.google, etc.
           "https://*.clarity.ms"  // Abarca scripts.clarity, c.clarity, etc.
         ],
+        // Tag Assistant y navegadores modernos validan `script-src-elem` explícito.
+        // Mantenerlo alineado con `script-src` evita falsos positivos y bloqueos.
+        scriptSrcElem: [
+          "'self'",
+          "'unsafe-inline'",
+          "'unsafe-eval'",
+          "https://*.googletagmanager.com",
+          "https://www.googleadservices.com",
+          "https://*.doubleclick.net",
+          "https://*.facebook.net",
+          "https://*.paypal.com",
+          "https://*.gstatic.com",
+          "https://*.google-analytics.com",
+          "https://*.google.com",
+          "https://*.clarity.ms"
+        ],
         imgSrc: [
           "'self'",
           "data:",
           "blob:",                 // Necesario para algunos mapas/imágenes dinámicas
+          "https://www.google.com",
+          "https://www.googletagmanager.com",
           "https://*.googleapis.com", // Abarca storage, firebase, etc.
           "https://*.facebook.com",
           "https://*.doubleclick.net",
@@ -121,6 +141,8 @@ app.use(
         ],
         connectSrc: [
           "'self'",
+          "https://www.google.com",
+          "https://*.googletagmanager.com",
           "https://*.googleapis.com", // ¡LA CLAVE! Autoriza todo Firebase/Auth/Firestore/Identity
           "https://*.firebase.com",
           "https://*.google-analytics.com",
@@ -130,6 +152,7 @@ app.use(
           "https://*.facebook.com"
         ],
         frameSrc: [
+          "https://www.googletagmanager.com",
           "https://*.firebaseapp.com",
           "https://*.paypal.com"
         ],
@@ -144,6 +167,8 @@ app.use(
     // Mantenemos headers de seguridad estándar
     frameguard: { action: 'sameorigin' },
     hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
+    // Necesario para que Tag Assistant/depuración (popups) pueda establecer conexión.
+    crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
   })
 );
 
@@ -182,8 +207,8 @@ const globalRateLimiter = rateLimit({
   legacyHeaders: RATE_LIMIT_CONFIG.GLOBAL.LEGACY_HEADERS,
 });
 
-// Aplicar rate limiter global a todas las rutas
-app.use(globalRateLimiter);
+// Aplicar rate limit solo a API para no bloquear refresh/assets del frontend.
+app.use('/api', globalRateLimiter);
 
 // ============================================
 // ALMACÉN DE HISTORIAL DE CHAT — DESACTIVADO TEMPORALMENTE

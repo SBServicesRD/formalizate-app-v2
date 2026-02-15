@@ -140,6 +140,20 @@ formalizate.app/
 ### El frontend no se conecta a Firebase
 - Verifica que todas las variables `VITE_FIREBASE_*` estén configuradas
 - Revisa la consola del navegador para errores específicos
+- En Cloud Run con `--source`, asegúrate de pasar `VITE_*` en build-time (`--build-env-vars-file`)
+
+### Deploy Cloud Run (Vite + Express)
+
+```bash
+gcloud run deploy formalizate-app \
+  --source . \
+  --region us-central1 \
+  --allow-unauthenticated \
+  --build-env-vars-file build.env.yaml \
+  --env-vars-file runtime.env.yaml
+```
+
+`VITE_*` vive en `build.env.yaml` (build-time) y backend vars en `runtime.env.yaml` (runtime).
 
 ### El chatbot no funciona
 - Verifica que `GEMINI_API_KEY` esté configurada

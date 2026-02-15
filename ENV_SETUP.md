@@ -144,7 +144,45 @@ npm run dev
    - `GOOGLE_PLACE_ID`
    - `GEMINI_API_KEY`
    - `FIREBASE_SERVICE_ACCOUNT` (como string JSON de una línea)
-5. Para variables de frontend, configúralas en tu proceso de build o en Vercel/Netlify
+5. Para variables de frontend (`VITE_*`), configúralas en el **build** de Cloud Run (no solo en runtime)
+
+### Cloud Run con `--source` (Vite + Express)
+
+Con `gcloud run deploy --source .`, Vite compila durante Cloud Build.  
+Por eso, las variables `VITE_*` deben existir en **build-time**.
+
+Usa dos archivos locales (NO subir a Git):
+
+```bash
+# build.env.yaml (solo variables VITE_*)
+VITE_FIREBASE_API_KEY: "..."
+VITE_FIREBASE_AUTH_DOMAIN: "..."
+VITE_FIREBASE_PROJECT_ID: "..."
+VITE_FIREBASE_STORAGE_BUCKET: "..."
+VITE_FIREBASE_MESSAGING_SENDER_ID: "..."
+VITE_FIREBASE_APP_ID: "..."
+VITE_FIREBASE_MEASUREMENT_ID: "..."
+VITE_PAYPAL_CLIENT_ID: "..."
+```
+
+```bash
+# runtime.env.yaml (variables backend/runtime)
+FIREBASE_SERVICE_ACCOUNT: '{"type":"service_account",...}'
+GOOGLE_API_KEY: "..."
+GOOGLE_PLACE_ID: "..."
+GEMINI_API_KEY: "..."
+```
+
+Deploy recomendado:
+
+```bash
+gcloud run deploy formalizate-app \
+  --source . \
+  --region us-central1 \
+  --allow-unauthenticated \
+  --build-env-vars-file build.env.yaml \
+  --env-vars-file runtime.env.yaml
+```
 
 ### Vercel / Netlify
 
