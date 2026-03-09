@@ -25,7 +25,6 @@ El estándar para negocios serios. Todo lo anterior más:
 Solución corporativa total. Todo lo anterior más:
 - Registro de Importador/Exportador (DGA).
 - Registro de Proveedor del Estado (RPE).
-- Certificación MiPyme.
 - Página Web Informativa (1 año) + 5 Correos.
 - Firma Digital válida por 3 años.
 - Soporte Prioritario y Asesoría Legal Pro.

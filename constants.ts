@@ -174,7 +174,6 @@ export const PACKAGES: Record<PackageName, {
             "Página Web Informativa (1 año)",
             "Registro Import/Export en DGA",
             "Registro Proveedor del Estado",
-            "Certificación MiPyme",
             "Plantillas Pro",
             "2 meses Cumplimiento Fiscal",
             "Soporte Prioritario"

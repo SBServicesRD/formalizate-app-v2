@@ -31,7 +31,7 @@ const TermsOfServicePage: React.FC = () => {
                         <li><strong>Firma ante Notario:</strong> Los documentos constitutivos requieren ser firmados ante un notario público para su validez legal. Formalizate.app coordina este proceso; la firma puede realizarse de forma presencial o, cuando corresponda, mediante mecanismos legalmente válidos.</li>
                         <li><strong>Registro Mercantil:</strong> Depósito e inscripción de los documentos ante la Cámara de Comercio y Producción correspondiente.</li>
                         <li><strong>Trámites Fiscales:</strong> Gestión del Registro Nacional de Contribuyentes (RNC), habilitación de la Oficina Virtual DGII y solicitud de Comprobantes Fiscales (NCF) ante la Dirección General de Impuestos Internos (DGII).</li>
-                        <li><strong>Trámites Adicionales (según plan):</strong> Registros laborales (TSS, Ministerio de Trabajo), Registro de Importador/Exportador (DGA), Registro de Proveedor del Estado (RPE), Certificación MiPyme, entre otros.</li>
+                        <li><strong>Trámites Adicionales (según plan):</strong> Registros laborales (TSS, Ministerio de Trabajo), Registro de Importador/Exportador (DGA), Registro de Proveedor del Estado (RPE), entre otros.</li>
                     </ol>
                     <p>
                         Los plazos de entrega son estimados (generalmente entre 10 y 15 días laborables tras la recepción de documentos firmados) y pueden variar dependiendo de la carga de trabajo de las entidades gubernamentales involucradas, causas de fuerza mayor o situaciones fuera de nuestro control.
