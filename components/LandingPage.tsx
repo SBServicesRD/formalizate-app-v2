@@ -530,6 +530,7 @@ const PricingTable: React.FC<{ onSelect: (pkg: PackageName) => void }> = ({ onSe
         "Página Web Informativa",
         "Registro Import/Export en DGA",
         "Registro Proveedor del Estado",
+        "Certificación MiPyme",
         "Plantillas Empresariales",
         "Plan de cumplimiento tributario",
         "Soporte"
@@ -550,6 +551,7 @@ const PricingTable: React.FC<{ onSelect: (pkg: PackageName) => void }> = ({ onSe
         "Página Web Informativa": { "Starter Pro": false, "Essential 360": false, "Unlimitech": <TextVal text="1 año" /> },
         "Registro Import/Export en DGA": { "Starter Pro": false, "Essential 360": false, "Unlimitech": true },
         "Registro Proveedor del Estado": { "Starter Pro": false, "Essential 360": false, "Unlimitech": true },
+        "Certificación MiPyme": { "Starter Pro": false, "Essential 360": false, "Unlimitech": true },
         
         "Plantillas Empresariales": { 
             "Starter Pro": <TextVal text="Básicas" />, 
