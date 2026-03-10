@@ -87,6 +87,7 @@ const HeroSection: React.FC<{ onStart: () => void }> = ({ onStart }) => (
                     Formalízate Ahora!
                     <ArrowRightIcon />
                 </button>
+                <p className="text-white/70 text-xs mt-2 drop-shadow bg-black/20 backdrop-blur-sm px-4 py-2 rounded-lg">Decenas de negocios formalizados desde 2020.</p>
             </div>
         </div>
         
