@@ -1,5 +1,5 @@
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { FormData, Partner, MaritalStatus } from '../types';
 import { SHARE_VALUE, PROVINCES, MUNICIPALITIES, COUNTRIES, INTERNATIONAL_REGIONS, ALLOWED_FILE_TYPES, PACKAGES, POSTAL_CODE_CONFIG } from '../constants';
 import { distributeShares, calculateICCTax, formatCurrency } from '../utils/calculations';
@@ -58,6 +58,18 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
 
     // Determine Administration Mode based on formData (Default to 'Socio' if unset)
     const isExternalManager = formData.manager.type === 'Tercero';
+
+    // EIRL: Forzar porcentaje 100% en el único socio
+    useEffect(() => {
+        if (formData.companyType === 'EIRL' && formData.partners.length > 0) {
+            const updatedPartners = formData.partners.map((p, idx) => 
+                idx === 0 ? { ...p, percentage: 100, shares: Math.floor(formData.socialCapital / SHARE_VALUE) } : p
+            );
+            if (JSON.stringify(updatedPartners) !== JSON.stringify(formData.partners)) {
+                updateFormData({ partners: updatedPartners });
+            }
+        }
+    }, [formData.companyType, formData.socialCapital]);
 
     // --- STYLES PREMIUM REFINED ---
     const inputClass = "w-full px-4 py-3 rounded-xl bg-white border border-gray-200 text-text-primary placeholder-gray-400 focus:outline-none focus:border-sbs-blue focus:ring-4 focus:ring-sbs-blue/10 transition-all duration-300 shadow-sm text-base font-medium";
@@ -375,9 +387,14 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
             return;
         }
 
-        // Validación Legal 2: Mínimo 2 Socios
-        if (formData.partners.length < 2) {
+        // Validación Legal 2: Socios según tipo de empresa
+        if (formData.companyType === 'SRL' && formData.partners.length < 2) {
             alert("Una S.R.L. requiere un mínimo de 2 socios obligatorios. Por favor agrega un segundo socio.");
+            setIsSubmitting(false);
+            return;
+        }
+        if (formData.companyType === 'EIRL' && formData.partners.length !== 1) {
+            alert("Una E.I.R.L. debe tener exactamente 1 titular. Por favor verifica que haya únicamente un socio.");
             setIsSubmitting(false);
             return;
         }
@@ -458,6 +475,23 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
     return (
         <div className="animate-fade-in-up">
             <h2 className="text-2xl font-bold text-sbs-blue mb-6">Paso 2: Socios y Capital</h2>
+            
+            {/* --- ALERTA DEPÓSITO BANCARIO PARA EIRL --- */}
+            {formData.companyType === 'EIRL' && (
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 mb-8 flex items-start gap-4">
+                    <div className="text-amber-600 flex-shrink-0 mt-1">
+                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                        </svg>
+                    </div>
+                    <div>
+                        <p className="text-sm font-bold text-amber-900 mb-2">Depósito del Capital Social</p>
+                        <p className="text-xs text-amber-800 leading-relaxed">
+                            Para las E.I.R.L., el capital social debe depositarse en una cuenta bancaria a nombre de la empresa en formación. Una vez se emita el Registro Mercantil, el banco devolverá estos fondos. Este es un requisito legal para completar la constitución.
+                        </p>
+                    </div>
+                </div>
+            )}
             
             {/* --- ADMINISTRATION MODE TOGGLE --- */}
             <div className="bg-white p-6 rounded-2xl border border-gray-200 mb-8 shadow-sm">
@@ -1014,9 +1048,14 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                                         type="text" 
                                         inputMode="numeric"
                                         pattern="[0-9]*"
-                                        value={partner.percentage === 0 ? '' : partner.percentage} 
-                                        onChange={e => handlePartnerChange(partner.id, 'percentage', e.target.value)} 
-                                        className="w-full bg-transparent font-bold text-sbs-blue focus:outline-none text-2xl placeholder-blue-300" 
+                                        value={formData.companyType === 'EIRL' ? '100' : (partner.percentage === 0 ? '' : partner.percentage)}
+                                        onChange={e => formData.companyType !== 'EIRL' && handlePartnerChange(partner.id, 'percentage', e.target.value)}
+                                        disabled={formData.companyType === 'EIRL'}
+                                        className={`w-full bg-transparent font-bold focus:outline-none text-2xl placeholder-blue-300 ${
+                                            formData.companyType === 'EIRL' 
+                                                ? 'text-gray-400 cursor-not-allowed' 
+                                                : 'text-sbs-blue'
+                                        }`}
                                         max="100" 
                                         placeholder="0" 
                                     />
@@ -1034,7 +1073,16 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
             )})}
             
             <div className="flex justify-between items-center mb-8 bg-gray-50 p-4 rounded-xl">
-                <button onClick={addPartner} className="text-sbs-blue text-sm font-bold hover:underline flex items-center px-3 py-2 hover:bg-blue-50 rounded-lg transition-colors">
+                <button 
+                    onClick={addPartner}
+                    disabled={formData.companyType === 'EIRL' && formData.partners.length >= 1}
+                    className={`text-sm font-bold flex items-center px-3 py-2 rounded-lg transition-colors ${
+                        formData.companyType === 'EIRL' && formData.partners.length >= 1
+                            ? 'text-gray-400 cursor-not-allowed'
+                            : 'text-sbs-blue hover:underline hover:bg-blue-50'
+                    }`}
+                    title={formData.companyType === 'EIRL' ? "Una E.I.R.L. puede tener solo 1 titular" : ""}
+                >
                     <span className="text-lg mr-1">+</span> Añadir Socio
                 </button>
                 <div className={`font-bold text-sm px-4 py-2 rounded-lg border ${Math.abs(totalPercentage - 100) < 0.1 ? 'bg-green-100 text-green-700 border-green-200' : 'bg-red-100 text-red-700 border-red-200'}`}>

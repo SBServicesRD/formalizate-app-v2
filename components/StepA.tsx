@@ -61,6 +61,13 @@ const StepA: React.FC<StepAProps> = ({ formData, updateFormData, nextStep, prevS
         }
     }, []);
 
+    // Forzar "Un solo socio" si es EIRL
+    useEffect(() => {
+        if (formData.companyType === 'EIRL' && formData.nameOwnership !== 'Un solo socio') {
+            updateFormData({ nameOwnership: 'Un solo socio' });
+        }
+    }, [formData.companyType]);
+
     // Sync data when "isTitular" is true and Applicant data changes
     useEffect(() => {
         if (formData.applicant.isTitular && formData.titulars.length > 0) {
@@ -183,6 +190,12 @@ const StepA: React.FC<StepAProps> = ({ formData, updateFormData, nextStep, prevS
 
     const handleOwnershipChange = (value: 'Un solo socio' | 'Dos socios') => {
         const newOwnership = value;
+        
+        // EIRL solo permite "Un solo socio"
+        if (formData.companyType === 'EIRL' && newOwnership === 'Dos socios') {
+            return;
+        }
+        
         let newTitulars = [...formData.titulars];
 
         if (newOwnership === 'Dos socios' && newTitulars.length < 2) {
@@ -728,7 +741,9 @@ const StepA: React.FC<StepAProps> = ({ formData, updateFormData, nextStep, prevS
                     <div className="animate-fade-in-up">
                         <label className={labelClass}>Titularidad del Nombre <Tooltip text="¿A nombre de quién quedará registrado el nombre comercial?" /></label>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-                            {['Un solo socio', 'Dos socios'].map(opt => (
+                            {['Un solo socio', 'Dos socios'].filter(opt => 
+                                formData.companyType === 'EIRL' ? opt === 'Un solo socio' : true
+                            ).map(opt => (
                                 <label key={opt} className={`border rounded-xl p-4 flex items-center cursor-pointer transition-all hover:border-sbs-blue ${formData.nameOwnership === opt ? 'bg-blue-50 border-sbs-blue' : 'bg-white border-gray-200'}`}>
                                     <input 
                                         type="radio" 

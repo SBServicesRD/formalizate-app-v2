@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { FormData } from '../types';
-import { Building, ChevronDown } from 'lucide-react';
+import { Building, ChevronDown, User } from 'lucide-react';
 
 interface StepTypeSelectionProps {
     formData: FormData;
@@ -11,10 +11,6 @@ interface StepTypeSelectionProps {
 }
 
 const COMING_SOON_TYPES = [
-    {
-        title: "E.I.R.L. – Empresa Individual de Responsabilidad Limitada",
-        description: "La estructura ideal para emprendedores individuales que quieren operar sin socios, pero con protección patrimonial. Te permite separar tus bienes personales de los del negocio, mantener control total y crecer de manera formal, ordenada y segura."
-    },
     {
         title: "S.A. – Sociedad Anónima",
         description: "El tipo societario diseñado para empresas de mayor tamaño, expansión o proyectos que requieren inversionistas y estructuras corporativas más robustas. Permite emitir acciones, tener un Consejo de Administración y acceder a operaciones bancarias y comerciales de alto volumen."
@@ -53,6 +49,11 @@ const StepTypeSelection: React.FC<StepTypeSelectionProps> = ({ formData, updateF
         nextStep();
     };
 
+    const handleEIRL = () => {
+        updateFormData({ companyType: 'EIRL' });
+        nextStep();
+    };
+
     return (
         <div className="max-w-3xl mx-auto animate-fade-in-up">
             <div className="text-center mb-12">
@@ -77,6 +78,27 @@ const StepTypeSelection: React.FC<StepTypeSelectionProps> = ({ formData, updateF
                         <h3 className="text-xl sm:text-3xl font-bold text-text-primary group-hover:text-sbs-blue transition-colors mb-3">S.R.L. – Sociedad de Responsabilidad Limitada</h3>
                         <p className="text-text-secondary text-sm sm:text-base leading-relaxed mb-6 sm:mb-8 font-light">
                             El tipo de empresa más práctico y seguro para emprendedores en República Dominicana. Protege tu patrimonio personal y te permite operar con credibilidad formal desde el primer día.
+                        </p>
+                        <span className="text-sbs-blue text-sm font-bold flex items-center group-hover:translate-x-2 transition-transform">
+                            Seleccionar Estructura <span className="ml-2">&rarr;</span>
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            {/* Opción Secundaria EIRL */}
+            <div 
+                className="group bg-white border border-premium-border rounded-[2rem] p-6 sm:p-10 shadow-premium-card hover:shadow-premium-hover hover:border-sbs-blue/30 transition-all duration-500 cursor-pointer relative overflow-hidden mt-6"
+                onClick={handleEIRL}
+            >
+                <div className="flex flex-col sm:flex-row items-start relative z-10 gap-4 sm:gap-0">
+                    <div className="bg-amber-50 p-5 rounded-2xl sm:mr-8 border border-amber-50 group-hover:scale-110 transition-transform duration-500 flex-shrink-0">
+                        <User className="w-8 h-8 text-amber-600" strokeWidth={1.5} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <h3 className="text-xl sm:text-3xl font-bold text-text-primary group-hover:text-sbs-blue transition-colors mb-3">E.I.R.L. – Empresa Individual de Responsabilidad Limitada</h3>
+                        <p className="text-text-secondary text-sm sm:text-base leading-relaxed mb-6 sm:mb-8 font-light">
+                            La estructura ideal para emprendedores individuales que quieren operar sin socios, pero con protección patrimonial. Te permite separar tus bienes personales de los del negocio, mantener control total y crecer de manera formal, ordenada y segura.
                         </p>
                         <span className="text-sbs-blue text-sm font-bold flex items-center group-hover:translate-x-2 transition-transform">
                             Seleccionar Estructura <span className="ml-2">&rarr;</span>
