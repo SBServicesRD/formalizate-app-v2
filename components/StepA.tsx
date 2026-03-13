@@ -377,7 +377,7 @@ const StepA: React.FC<StepAProps> = ({ formData, updateFormData, nextStep, prevS
             const response = await fetch('/api/optimize-text', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: formData.socialObject })
+                body: JSON.stringify({ text: formData.socialObject, companyType: formData.companyType })
             });
 
             const data = await response.json();
@@ -736,8 +736,8 @@ const StepA: React.FC<StepAProps> = ({ formData, updateFormData, nextStep, prevS
                         </div>
                     )}
 
-                    {/* Pregunta 9: Titularidad del Nombre - SOLO SI NO TIENE NOMBRE REGISTRADO */}
-                    {formData.hasRegisteredName === 'No' && (
+                    {/* Pregunta 9: Titularidad del Nombre - SOLO SI NO TIENE NOMBRE REGISTRADO Y NO ES EIRL */}
+                    {formData.hasRegisteredName === 'No' && formData.companyType !== 'EIRL' && (
                     <div className="animate-fade-in-up">
                         <label className={labelClass}>Titularidad del Nombre <Tooltip text="¿A nombre de quién quedará registrado el nombre comercial?" /></label>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
@@ -960,8 +960,12 @@ const StepA: React.FC<StepAProps> = ({ formData, updateFormData, nextStep, prevS
                         </div>
                         <input type="checkbox" name="isTitular" checked={formData.applicant.isTitular} onChange={handleApplicantChange} className="hidden" />
                         <div>
-                            <span className={`font-bold text-sm block ${formData.applicant.isTitular ? 'text-sbs-blue' : 'text-text-primary'}`}>¿Soy el titular (dueño) del Nombre Comercial?</span>
-                            <span className="text-xs text-gray-500">Si marcas esto, tus datos se copiarán a la sección de Titulares.</span>
+                            <span className={`font-bold text-sm block ${formData.applicant.isTitular ? 'text-sbs-blue' : 'text-text-primary'}`}>
+                                {formData.companyType === 'EIRL' 
+                                    ? '¿Soy el titular de la empresa a registrar?' 
+                                    : '¿Soy un socio del nombre comercial?'}
+                            </span>
+                            <span className="text-xs text-gray-500">Si marcas esto, tus datos se copiarán automáticamente.</span>
                         </div>
                     </label>
                 </div>
@@ -974,7 +978,7 @@ const StepA: React.FC<StepAProps> = ({ formData, updateFormData, nextStep, prevS
                 <div className="flex justify-between items-center mb-8">
                      <h3 className="text-2xl font-bold text-sbs-blue flex items-center">
                         <span className="bg-premium-surface-subtle text-sbs-blue rounded-xl w-10 h-10 flex items-center justify-center text-sm mr-4 font-extrabold border border-premium-border">3</span>
-                        Titulares (ONAPI)
+                        {formData.companyType === 'EIRL' ? 'Titular (ONAPI)' : 'Titulares (ONAPI)'}
                     </h3>
                 </div>
                 
@@ -1022,7 +1026,6 @@ const StepA: React.FC<StepAProps> = ({ formData, updateFormData, nextStep, prevS
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                                 {/* Front ID */}
                                 <div>
-                                    <span className="absolute -top-2.5 left-4 bg-white px-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider z-10">Frente</span>
                                     {uploadProgress[`titular_${i}_idFront`] ? (
                                         <UploadProgress progress={uploadProgress[`titular_${i}_idFront`]} />
                                     ) : !t.idFront ? (
@@ -1045,7 +1048,6 @@ const StepA: React.FC<StepAProps> = ({ formData, updateFormData, nextStep, prevS
 
                                 {/* Back ID */}
                                 <div>
-                                    <span className="absolute -top-2.5 left-4 bg-white px-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider z-10">Dorso / Atrás</span>
                                     {uploadProgress[`titular_${i}_idBack`] ? (
                                         <UploadProgress progress={uploadProgress[`titular_${i}_idBack`]} />
                                     ) : !t.idBack ? (

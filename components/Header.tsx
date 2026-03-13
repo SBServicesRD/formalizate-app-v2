@@ -52,7 +52,7 @@ const Header: React.FC<HeaderProps> = ({ isLanding, showSaveExit = false, isDash
             setIsScrolled(window.scrollY > 20);
 
             if (isLanding) {
-                const sections = ['inicio', 'proceso', 'legalidad', 'servicios', 'faq'];
+                const sections = ['inicio', 'resultados', 'servicios', 'proceso', 'legalidad', 'faq'];
                 let current = '';
                 
                 for (const section of sections) {
@@ -106,9 +106,10 @@ const Header: React.FC<HeaderProps> = ({ isLanding, showSaveExit = false, isDash
 
     const navLinks = [
         { name: 'Inicio', id: 'inicio' },
+        { name: 'Resultados', id: 'resultados' },
+        { name: 'Planes', id: 'servicios' },
         { name: 'Proceso', id: 'proceso' },
         { name: 'Legalidad', id: 'legalidad' },
-        { name: 'Planes', id: 'servicios' },
         { name: 'FAQ', id: 'faq' },
     ];
 

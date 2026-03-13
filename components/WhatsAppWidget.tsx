@@ -26,7 +26,7 @@ const WhatsAppWidget: React.FC = () => {
 
                 hasOpenedRef.current = true;
             }
-        }, 12000); // Se abre a los 12 segundos
+        }, 13000); // Se abre a los 13 segundos
         return () => clearTimeout(timer);
     }, []);
 

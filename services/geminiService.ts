@@ -14,14 +14,40 @@ const getAiClient = () => {
 export const improveSocialObject = async (userInput: string): Promise<string> => {
     try {
         const ai = getAiClient();
-        const prompt = `Reformula la siguiente descripción de actividad comercial para que sea un "objeto social" formal, amplio y jurídicamente apropiado para una empresa de Responsabilidad Limitada (S.R.L.) en la República Dominicana. El resultado debe ser un único párrafo, sin introducciones ni despedidas, solo el texto del objeto social, y NO DEBE EXCEDER los 500 caracteres. Actividad del usuario: "${userInput}"`;
+        const prompt = `Eres un asistente jurídico-comercial especializado en la redacción de objetos sociales para sociedades comerciales y Empresas Individuales de Responsabilidad Limitada (EIRL) en la República Dominicana, conforme a la Ley 479-08 y la práctica registral de las Cámaras de Comercio.
+
+REGLAS FUNDAMENTALES:
+- Solo utiliza las actividades declaradas por el usuario. Puedes agruparlas, ordenarlas y elevar su lenguaje jurídico, pero no puedes agregar sectores nuevos.
+- Incluye todas las actividades relevantes que el usuario declare. Nunca omitas actividades.
+- No agregues automáticamente importación/exportación, construcción, inmobiliaria, consultoría, tecnología, transporte, franquicias, representación comercial, venta de alcohol o manufactura industrial, salvo que el usuario lo haya indicado expresamente.
+- El objeto debe permitir crecimiento natural y expansión operativa razonable.
+
+ESTRUCTURA OBLIGATORIA:
+1. Apertura: usar "La sociedad tiene como objeto social principal…" o "La empresa tendrá como objeto social principal…"
+2. Núcleo operativo: usar verbos como explotación, comercialización, fabricación, elaboración, distribución, prestación de servicios, operación, suministro, desarrollo.
+3. Alcance comercial: incluir referencias a venta al público, venta a empresas, distribución o servicios asociados cuando aplique.
+4. Cierre obligatorio: terminar siempre con "…y demás actividades relacionadas directa o indirectamente con su actividad comercial." o "…y cualquier otra actividad conexa que contribuya al desarrollo de su objeto social dentro del marco legal vigente."
+
+REGLAS DE ESTILO:
+- Redactar en prosa continua, nunca en viñetas ni listados.
+- Lenguaje jurídico-comercial claro y profesional.
+- Evitar redundancias, frases excesivamente largas y tecnicismos innecesarios.
+- Evitar palabras restrictivas como "exclusivamente", "únicamente" o "de forma limitativa".
+
+EJEMPLOS DE REFERENCIA:
+Restaurante: "La sociedad tiene como objeto social principal la explotación de establecimientos dedicados a la preparación, comercialización y expendio de alimentos y bebidas mediante servicios de restaurante, venta directa al público y suministro a empresas, pudiendo desarrollar actividades relacionadas con la distribución y comercialización de productos vinculados a su operación comercial, así como cualquier otra actividad conexa que contribuya al desarrollo de su objeto social dentro del marco legal vigente."
+Joyería: "La sociedad tiene como objeto social principal el diseño, elaboración, fabricación y comercialización de joyas artesanales y piezas de joyería de autor, así como la impartición de talleres formativos en técnicas de joyería y actividades relacionadas con su promoción y distribución, pudiendo realizar cualquier otra actividad conexa que contribuya al desarrollo de su objeto social dentro del marco legal vigente."
+
+TAREA: Redacta el objeto social para una empresa cuya actividad es: "${userInput}"
+
+Responde ÚNICAMENTE con el texto del objeto social, sin introducciones, títulos ni explicaciones. El resultado debe poder insertarse directamente en los Estatutos Sociales.`;
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: prompt,
             config: {
-                maxOutputTokens: 200, // Safe limit for ~500 characters
-                thinkingConfig: { thinkingBudget: 50 },
+                maxOutputTokens: 600,
+                thinkingConfig: { thinkingBudget: 0 },
             }
         });
 

@@ -59,17 +59,29 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
     // Determine Administration Mode based on formData (Default to 'Socio' if unset)
     const isExternalManager = formData.manager.type === 'Tercero';
 
-    // EIRL: Forzar porcentaje 100% en el único socio
+    // EIRL: Forzar porcentaje 100% y rol Gerente en el único titular
     useEffect(() => {
         if (formData.companyType === 'EIRL' && formData.partners.length > 0) {
-            const updatedPartners = formData.partners.map((p, idx) => 
-                idx === 0 ? { ...p, percentage: 100, shares: Math.floor(formData.socialCapital / SHARE_VALUE) } : p
-            );
+            const updatedPartners = formData.partners.map((p, idx) => {
+                const roles = p.roles || ['Socio'];
+                const updatedRoles = roles.includes('Gerente') ? roles : [...roles, 'Gerente'];
+                return idx === 0
+                    ? { ...p, percentage: 100, shares: Math.floor(formData.socialCapital / SHARE_VALUE), roles: updatedRoles }
+                    : p;
+            });
             if (JSON.stringify(updatedPartners) !== JSON.stringify(formData.partners)) {
                 updateFormData({ partners: updatedPartners });
             }
         }
     }, [formData.companyType, formData.socialCapital]);
+
+    // EIRL sin gerente externo: auto-seleccionar al titular como firma digital
+    useEffect(() => {
+        const isExt = formData.manager.type === 'Tercero';
+        if (formData.companyType === 'EIRL' && formData.partners.length > 0 && !formData.digitalSignatureHolderId && !isExt) {
+            updateFormData({ digitalSignatureHolderId: formData.partners[0].id });
+        }
+    }, [formData.companyType, formData.partners, formData.manager.type]);
 
     // --- STYLES PREMIUM REFINED ---
     const inputClass = "w-full px-4 py-3 rounded-xl bg-white border border-gray-200 text-text-primary placeholder-gray-400 focus:outline-none focus:border-sbs-blue focus:ring-4 focus:ring-sbs-blue/10 transition-all duration-300 shadow-sm text-base font-medium";
@@ -299,7 +311,7 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
             residenceCountry: 'República Dominicana', // País de residencia (determina formato dirección)
             addressStreet: '', addressNumber: '', addressSuite: '', addressSector: '', addressCity: '', addressProvince: '',
             postalCode: '', // Código postal para direcciones internacionales
-            email: '', mobilePhone: '', roles: ['Socio'], percentage: 0, shares: 0,
+            email: '', mobilePhone: '', roles: formData.companyType === 'EIRL' ? ['Socio', 'Gerente'] : ['Socio'], percentage: 0, shares: 0,
         };
         updateFormData({ partners: [...formData.partners, newPartner] });
     };
@@ -441,7 +453,7 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
 
         // Validación Legal 7: Titular de Firma Digital
         if (!formData.digitalSignatureHolderId) {
-            alert("Debes seleccionar un socio como Titular de la Firma Digital.");
+            alert(formData.companyType === 'EIRL' ? "Debes seleccionar un titular como Titular de la Firma Digital." : "Debes seleccionar un socio como Titular de la Firma Digital.");
             setIsSubmitting(false);
             return;
         }
@@ -474,20 +486,20 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
 
     return (
         <div className="animate-fade-in-up">
-            <h2 className="text-2xl font-bold text-sbs-blue mb-6">Paso 2: Socios y Capital</h2>
+            <h2 className="text-2xl font-bold text-sbs-blue mb-6">{formData.companyType === 'EIRL' ? 'Paso 2: Titular y Capital' : 'Paso 2: Socios y Capital'}</h2>
             
-            {/* --- ALERTA DEPÓSITO BANCARIO PARA EIRL --- */}
+            {/* --- AVISO DEPÓSITO BANCARIO PARA EIRL --- */}
             {formData.companyType === 'EIRL' && (
-                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 mb-8 flex items-start gap-4">
-                    <div className="text-amber-600 flex-shrink-0 mt-1">
-                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                <div className="bg-blue-50 border border-blue-100 rounded-2xl p-6 mb-8 flex items-start gap-4">
+                    <div className="text-sbs-blue flex-shrink-0 mt-1">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20A10 10 0 0012 2z" />
                         </svg>
                     </div>
                     <div>
-                        <p className="text-sm font-bold text-amber-900 mb-2">Depósito del Capital Social</p>
-                        <p className="text-xs text-amber-800 leading-relaxed">
-                            Para las E.I.R.L., el capital social debe depositarse en una cuenta bancaria a nombre de la empresa en formación. Una vez se emita el Registro Mercantil, el banco devolverá estos fondos. Este es un requisito legal para completar la constitución.
+                        <p className="text-sm font-bold text-sbs-blue mb-2">Sobre el Capital Social en la E.I.R.L.</p>
+                        <p className="text-xs text-gray-600 leading-relaxed">
+                            El capital social se deposita <strong>a nombre de la sociedad en formación</strong> en una cuenta bancaria designada para ese fin (Art. 455 Ley 479-08). El banco emite una certificación del depósito. Una vez completada la constitución y obtengas el Registro Mercantil, presentas ese documento al banco y este libera los fondos. No existe capital mínimo legal; deberás depositar el 100% del monto declarado.
                         </p>
                     </div>
                 </div>
@@ -503,13 +515,13 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                         <p className="text-sm text-gray-500">¿Quién gestionará el día a día de la empresa?</p>
                     </div>
                     <div className="flex bg-gray-100 p-1 rounded-xl">
-                        <button 
+                        <button
                             onClick={() => toggleManagerMode('Socio')}
                             className={`px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 ${!isExternalManager ? 'bg-white text-sbs-blue shadow-md' : 'text-gray-500 hover:text-gray-700'}`}
                         >
-                            Socios
+                            {formData.companyType === 'EIRL' ? 'El Titular' : 'Socios'}
                         </button>
-                        <button 
+                        <button
                             onClick={() => toggleManagerMode('Tercero')}
                             className={`px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 ${isExternalManager ? 'bg-white text-sbs-blue shadow-md' : 'text-gray-500 hover:text-gray-700'}`}
                         >
@@ -520,7 +532,7 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                     {isExternalManager && (
                     <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-100 flex items-start text-xs text-blue-800">
                         <HelpCircle className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
-                        <span>Has seleccionado <strong>Gerente Externo</strong>. Completa sus datos a continuación. Opcionalmente, también puedes designar socios con rol de "Gerente" para una administración mixta.</span>
+                        <span>Has seleccionado <strong>Gerente Externo</strong>. Completa sus datos a continuación. {formData.companyType === 'EIRL' ? 'El titular seguirá siendo propietario de la empresa.' : 'Opcionalmente, también puedes designar socios con rol de "Gerente" para una administración mixta.'}</span>
                     </div>
                 )}
 
@@ -590,9 +602,17 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
 
                 <h3 className="font-bold text-lg text-sbs-blue mb-2 flex items-center relative z-10">
                     Capital Social
-                    <Tooltip text="El dinero total que los socios invierten para iniciar la empresa. Se divide en cuotas." />
+                    <Tooltip text={formData.companyType === 'EIRL' 
+                        ? "El capital que el titular aporta para iniciar la empresa. Se divide en cuotas." 
+                        : "El dinero total que los socios invierten para iniciar la empresa. Se divide en cuotas."
+                    } />
                 </h3>
-                <p className="text-sm text-gray-600 mb-4 relative z-10">Define el monto total a aportar. (Mínimo sugerido RD$ 100,000)</p>
+                <p className="text-sm text-gray-600 mb-4 relative z-10">
+                    {formData.companyType === 'EIRL' 
+                        ? "Define el monto a aportar. No hay mínimo legal, pero deberás depositar el total en el banco."
+                        : "Define el monto total a aportar. (Mínimo sugerido RD$ 100,000 — solo se paga 1% de impuesto sobre el excedente)"
+                    }
+                </p>
                 
                 <div className="relative z-10">
                     <span className="absolute left-0 top-1/2 -translate-y-1/2 text-2xl font-bold text-sbs-blue/40">RD$</span>
@@ -649,7 +669,7 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                 <p className="text-xs text-gray-400 mt-2">Recomendado: 6 años para evitar renovaciones frecuentes.</p>
             </div>
 
-            <h3 className="font-bold text-lg text-sbs-blue mb-4 flex items-center">Estructura de Socios <span className="ml-2 text-xs bg-blue-100 text-sbs-blue px-2 py-1 rounded-full">{formData.partners.length} Personas</span></h3>
+            <h3 className="font-bold text-lg text-sbs-blue mb-4 flex items-center">{formData.companyType === 'EIRL' ? 'Información del Titular' : 'Estructura de Socios'} <span className="ml-2 text-xs bg-blue-100 text-sbs-blue px-2 py-1 rounded-full">{formData.partners.length} {formData.companyType === 'EIRL' ? 'Persona' : 'Personas'}</span></h3>
             
             {formData.partners.map((partner, i) => {
                  // International Address Logic - Basado en PAÍS DE RESIDENCIA, no nacionalidad
@@ -667,8 +687,8 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                  return (
                 <div key={partner.id} className="border border-premium-border shadow-sm p-6 rounded-2xl mb-6 relative bg-white hover:shadow-md transition-all">
                     <div className="flex justify-between items-center mb-4">
-                         <h4 className="font-bold text-sbs-blue text-sm uppercase tracking-wider">Socio {i+1}</h4>
-                         {formData.partners.length > 1 && (
+                         <h4 className="font-bold text-sbs-blue text-sm uppercase tracking-wider">{formData.companyType === 'EIRL' ? 'Titular' : `Socio ${i+1}`}</h4>
+                         {formData.partners.length > 1 && formData.companyType !== 'EIRL' && (
                             <button onClick={() => removePartner(partner.id)} className="text-red-400 text-xs font-bold uppercase tracking-wider hover:text-red-600 bg-red-50 px-2 py-1 rounded">Eliminar</button>
                         )}
                     </div>
@@ -804,9 +824,6 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                             <div className={`grid grid-cols-1 ${isPassport ? '' : 'sm:grid-cols-2'} gap-6`}>
                                 {/* Front Side */}
                                 <div className="relative">
-                                    <span className="absolute -top-2.5 left-4 bg-white px-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider z-10">
-                                        {isPassport ? "Página Principal" : "Frente"}
-                                    </span>
                                     {uploadProgress[`${partner.id}_idFront`] ? (
                                         <UploadProgress progress={uploadProgress[`${partner.id}_idFront`]} />
                                     ) : !partner.idFront ? (
@@ -830,7 +847,6 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                                 {/* Back Side - HIDDEN IF PASSPORT */}
                                 {!isPassport && (
                                     <div className="relative">
-                                        <span className="absolute -top-2.5 left-4 bg-white px-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider z-10">Dorso / Atrás</span>
                                         {uploadProgress[`${partner.id}_idBack`] ? (
                                             <UploadProgress progress={uploadProgress[`${partner.id}_idBack`]} />
                                         ) : !partner.idBack ? (
@@ -857,16 +873,19 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                         {/* Selector de Cargos (Multi-select) - SIEMPRE VISIBLE para Gerencia Mixta */}
                         <div className="md:col-span-2 mt-2">
                              <label className="block text-[10px] font-bold text-gray-400 uppercase mb-2 tracking-wider">
-                                Cargos Asignados {!isExternalManager && <span className="text-sbs-red">*</span>}
-                                <Tooltip text={isExternalManager 
-                                    ? "Opcional: Puedes designar socios como Gerentes adicionales para una administración mixta." 
-                                    : "Al menos un socio debe ser designado como Gerente para representar a la empresa."
+                                Cargos Asignados {!isExternalManager && formData.companyType !== 'EIRL' && <span className="text-sbs-red">*</span>}
+                                <Tooltip text={
+                                    formData.companyType === 'EIRL'
+                                        ? "El titular de la E.I.R.L. es siempre Propietario y Gerente por disposición legal."
+                                        : isExternalManager
+                                            ? "Opcional: Puedes designar socios como Gerentes adicionales para una administración mixta."
+                                            : "Al menos un socio debe ser designado como Gerente para representar a la empresa."
                                 } />
                              </label>
                              <div className="flex flex-wrap gap-2">
                                  {['Socio', 'Gerente'].map(role => {
                                      const isActive = partnerRoles.includes(role);
-                                     const isFixed = role === 'Socio';
+                                     const isFixed = role === 'Socio' || (formData.companyType === 'EIRL' && role === 'Gerente');
                                      
                                      return (
                                         <button
@@ -1083,7 +1102,7 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                     }`}
                     title={formData.companyType === 'EIRL' ? "Una E.I.R.L. puede tener solo 1 titular" : ""}
                 >
-                    <span className="text-lg mr-1">+</span> Añadir Socio
+                    <span className="text-lg mr-1">+</span> {formData.companyType === 'EIRL' ? 'Titular único' : 'Añadir Socio'}
                 </button>
                 <div className={`font-bold text-sm px-4 py-2 rounded-lg border ${Math.abs(totalPercentage - 100) < 0.1 ? 'bg-green-100 text-green-700 border-green-200' : 'bg-red-100 text-red-700 border-red-200'}`}>
                     Total: {totalPercentage}%
@@ -1102,23 +1121,51 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                                 Titular de la Firma Digital <span className="text-sbs-red">*</span>
                             </label>
                             <p className="text-xs text-gray-500">
-                                Selecciona cuál socio será el responsable de la firma digital de la empresa. Solo puede ser uno.
+                                {formData.companyType === 'EIRL'
+                                    ? isExternalManager
+                                        ? 'Selecciona quién será el titular de la firma digital: el propietario o el gerente externo.'
+                                        : 'El titular de la empresa será el responsable de la firma digital.'
+                                    : 'Selecciona cuál socio será el responsable de la firma digital de la empresa. Solo puede ser uno.'}
                             </p>
                         </div>
                     </div>
                     
                     <div className="space-y-2">
-                        {formData.partners.map((partner) => (
-                            <label 
-                                key={partner.id}
+                        {/* Opción: Gerente Externo (cuando aplica) */}
+                        {isExternalManager && formData.manager.name && (
+                            <label
                                 className={`flex items-center p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                                    formData.digitalSignatureHolderId === partner.id 
-                                        ? 'border-sbs-blue bg-blue-50' 
+                                    formData.digitalSignatureHolderId === -1
+                                        ? 'border-sbs-blue bg-blue-50'
                                         : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                                 }`}
                             >
-                                <input 
-                                    type="radio" 
+                                <input
+                                    type="radio"
+                                    name="digitalSignatureHolder"
+                                    checked={formData.digitalSignatureHolderId === -1}
+                                    onChange={() => updateFormData({ digitalSignatureHolderId: -1 })}
+                                    className="w-4 h-4 text-sbs-blue border-gray-300 focus:ring-sbs-blue"
+                                />
+                                <div className="ml-3 flex-1">
+                                    <span className="font-bold text-text-primary">{formData.manager.name}</span>
+                                    <span className="text-xs text-gray-400 ml-2">{formData.manager.idNumber || 'Sin documento'}</span>
+                                </div>
+                                <span className="text-[10px] bg-amber-500 text-white px-2 py-1 rounded-full font-bold ml-2">GERENTE EXTERNO</span>
+                            </label>
+                        )}
+                        {/* Opción: Socios / Titular */}
+                        {formData.partners.map((partner) => (
+                            <label
+                                key={partner.id}
+                                className={`flex items-center p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                                    formData.digitalSignatureHolderId === partner.id
+                                        ? 'border-sbs-blue bg-blue-50'
+                                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                                }`}
+                            >
+                                <input
+                                    type="radio"
                                     name="digitalSignatureHolder"
                                     checked={formData.digitalSignatureHolderId === partner.id}
                                     onChange={() => updateFormData({ digitalSignatureHolderId: partner.id })}
@@ -1126,9 +1173,9 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                                 />
                                 <div className="ml-3 flex-1">
                                     <span className="font-bold text-text-primary">
-                                        {partner.names && partner.surnames 
-                                            ? `${partner.names} ${partner.surnames}` 
-                                            : `Socio ${formData.partners.indexOf(partner) + 1}`
+                                        {partner.names && partner.surnames
+                                            ? `${partner.names} ${partner.surnames}`
+                                            : formData.companyType === 'EIRL' ? 'Titular' : `Socio ${formData.partners.indexOf(partner) + 1}`
                                         }
                                     </span>
                                     <span className="text-xs text-gray-400 ml-2">
@@ -1137,7 +1184,7 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                                 </div>
                                 {formData.digitalSignatureHolderId === partner.id && (
                                     <span className="text-xs bg-sbs-blue text-white px-2 py-1 rounded-full font-bold">
-                                        Titular
+                                        Seleccionado
                                     </span>
                                 )}
                             </label>

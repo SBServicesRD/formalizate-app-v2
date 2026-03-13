@@ -64,9 +64,9 @@ const HeroSection: React.FC<{ onStart: () => void }> = ({ onStart }) => (
 
         <div className="relative z-10 max-w-5xl mx-auto px-6 text-center flex flex-col items-center justify-center h-full">
             <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold text-white mb-8 md:mb-10 leading-[1.1] tracking-tight drop-shadow-2xl max-w-4xl">
-                <span className="md:hidden block">Formaliza tu empresa en RD 100% online.</span>
+                <span className="md:hidden block">Formaliza tu empresa en RD 100% online</span>
                 <span className="hidden md:block">
-                    Formaliza tu empresa<br className="hidden md:block" /> en RD 100% online.
+                    Formaliza tu empresa<br className="hidden md:block" /> en RD 100% online
                 </span>
             </h1>
             
@@ -87,7 +87,6 @@ const HeroSection: React.FC<{ onStart: () => void }> = ({ onStart }) => (
                     Formalízate Ahora!
                     <ArrowRightIcon />
                 </button>
-                <p className="text-white/70 text-xs mt-2 drop-shadow bg-black/20 backdrop-blur-sm px-4 py-2 rounded-lg">Decenas de negocios formalizados desde 2020.</p>
             </div>
         </div>
         
@@ -97,43 +96,75 @@ const HeroSection: React.FC<{ onStart: () => void }> = ({ onStart }) => (
     </section>
 );
 
-const TrustIndicatorsSection = () => (
-    <section className="bg-white border-b border-gray-100 py-5 relative z-20 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 divide-y md:divide-y-0 md:divide-x divide-gray-100">
-                <div className="flex items-start justify-start md:justify-start px-4 py-2 group gap-3">
-                    <div className="w-12 h-12 rounded-full bg-blue-50 text-sbs-blue flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform duration-300">
-                        <Clock className="w-6 h-6" />
-                    </div>
-                    <div>
-                        <p className="text-sbs-blue font-bold text-base">Obtención de RNC sin gestiones presenciales</p>
-                        <p className="text-gray-500 text-sm">Sin filas ni burocracia</p>
-                    </div>
-                </div>
+const SocialProofSection = () => {
+    const logos = Array.from({ length: 19 }, (_, i) => ({
+        id: i + 1,
+        src: `https://storage.googleapis.com/pics_html/logocte${i + 1}.png`,
+        alt: `Cliente ${i + 1}`
+    }));
+    const duplicatedLogos = [...logos, ...logos];
 
-                <div className="flex items-start justify-start md:justify-center px-4 py-2 group gap-3">
-                    <div className="w-12 h-12 rounded-full bg-blue-50 text-sbs-blue flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform duration-300">
-                        <DollarSign className="w-6 h-6" />
-                    </div>
-                    <div>
-                        <p className="text-sbs-blue font-bold text-base">Proceso guiado y estructurado</p>
-                        <p className="text-gray-500 text-sm">Impuestos incluidos</p>
-                    </div>
-                </div>
+    const stats = [
+        { value: '100%', label: 'Remoto', desc: 'Sin visitas a oficinas ni filas' },
+        { value: '120+', label: 'Empresas formalizadas', desc: 'Proceso estructurado y verificable' },
+        { value: 'Ley 479-08', label: 'Respaldo legal', desc: 'RNC, Registro Mercantil y Firma Digital' },
+    ];
 
-                <div className="flex items-start justify-start md:justify-end px-4 py-2 group gap-3">
-                    <div className="w-12 h-12 rounded-full bg-blue-50 text-sbs-blue flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform duration-300">
-                        <CheckCircle className="w-6 h-6" />
-                    </div>
-                    <div>
-                        <p className="text-sbs-blue font-bold text-base">Cumplimiento legal desde el inicio</p>
-                        <p className="text-gray-500 text-sm">Gestión experta</p>
+    return (
+        <section id="resultados" className="bg-white relative z-20 py-20 md:py-28">
+            {/* 1. Texto */}
+            <div className="max-w-6xl mx-auto px-6 text-center mb-12">
+                <p className="text-[14px] font-bold text-text-tertiary uppercase tracking-[0.2em] mb-3">
+                    Confían en nosotros
+                </p>
+                <h2 className="text-4xl md:text-5xl font-bold text-sbs-blue mb-6 tracking-tight leading-tight">
+                    Decenas de empresas formalizadas
+                </h2>
+            </div>
+
+            {/* 2. Logos marquee */}
+            <div className="py-12 overflow-hidden mb-16">
+                <div className="relative">
+                    <div className="absolute left-0 top-0 bottom-0 w-24 bg-gradient-to-r from-white to-transparent z-10 pointer-events-none"></div>
+                    <div className="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-white to-transparent z-10 pointer-events-none"></div>
+                    <div className="overflow-hidden group">
+                        <div
+                            className="flex items-center animate-marquee group-hover:[animation-play-state:paused]"
+                            style={{ width: 'fit-content', willChange: 'transform' }}
+                        >
+                            {duplicatedLogos.map((logo, idx) => (
+                                <div key={idx} className="flex-shrink-0 px-6 md:px-10">
+                                    <img
+                                        src={logo.src}
+                                        alt={logo.alt}
+                                        className={`w-auto object-contain grayscale opacity-60 hover:grayscale-0 hover:opacity-100 transition-all duration-300 ${
+                                            logo.id === 15 ? 'max-w-[100px]' : 'h-8 md:h-10'
+                                        }`}
+                                        loading="lazy"
+                                    />
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-    </section>
-);
+
+            {/* 3. Stats */}
+            <div className="max-w-6xl mx-auto px-6">
+                <div className="border-t border-gray-100 mb-16"></div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-0 md:divide-x divide-gray-100">
+                    {stats.map((stat, i) => (
+                        <div key={i} className="text-center md:px-10">
+                            <p className="text-4xl md:text-5xl font-bold text-sbs-blue tracking-tight mb-3">{stat.value}</p>
+                            <p className="text-xs font-bold text-text-primary uppercase tracking-widest mb-2">{stat.label}</p>
+                            <p className="text-sm text-text-secondary leading-relaxed">{stat.desc}</p>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </section>
+    );
+};
 
 interface GoogleReview {
     author_name: string;
@@ -248,7 +279,7 @@ const BentoGridSection = () => {
                 <div className="text-center mb-24">
                     <h2 className="text-4xl md:text-5xl font-bold text-sbs-blue mb-6 tracking-tight leading-tight">
                         <span className="md:hidden block">Ingeniería legal para formalizar tu empresa sin perder tiempo ni cometer errores</span>
-                        <span className="hidden md:block">Ingeniería legal, diseñada para hacer las cosas bien desde el inicio.</span>
+                        <span className="hidden md:block">Ingeniería legal, diseñada para hacer las cosas bien desde el inicio</span>
                     </h2>
                     <p className="text-text-secondary max-w-2xl mx-auto text-xl font-light">
                         <span className="md:hidden block">Una plataforma legal diseñada para hacer las cosas bien desde el inicio.</span>
@@ -674,8 +705,8 @@ const PricingTable: React.FC<{ onSelect: (pkg: PackageName) => void }> = ({ onSe
             <div className="max-w-7xl mx-auto px-4 relative z-10">
                 <div className="text-center mb-24">
                     <h2 className="text-4xl md:text-5xl font-bold text-sbs-blue mb-6 tracking-tight leading-tight">
-                        Planes Transparentes. <br/>
-                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-sbs-blue to-sbs-blue-light">Resultados Reales.</span>
+                        Planes Transparentes <br/>
+                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-sbs-blue to-sbs-blue-light">Resultados Reales</span>
                     </h2>
                     <p className="text-lg text-text-secondary font-light">
                         <span className="md:hidden block">Elige el nivel de acompañamiento que necesitas.</span>
@@ -825,10 +856,10 @@ const LandingPage: React.FC<LandingPageProps> = ({ onStart }) => {
     return (
         <div className="overflow-hidden font-sans bg-white">
             <HeroSection onStart={scrollToPlans} />
-            <TrustIndicatorsSection />
+            <SocialProofSection />
+            <PricingTable onSelect={onStart} />
             <BentoGridSection />
             <LegalidadSection />
-            <PricingTable onSelect={onStart} />
             <PaymentTrustSection />
             <FaqSection />
         </div>
