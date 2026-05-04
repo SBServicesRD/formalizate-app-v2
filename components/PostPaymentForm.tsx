@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FormData } from '../types';
 import { NCF_OPTIONS, FISCAL_CLOSING_DATE, ALLOWED_FILE_TYPES } from '../constants';
 import { validateRequired, formatPhoneNumber, validateEmail, formatDateMask, validateDate, validatePhoneNumber, sanitizeInput } from '../utils/validation';
@@ -87,6 +87,19 @@ const PostPaymentForm: React.FC<PostPaymentFormProps> = ({ formData, updateFormD
     const [submissionError, setSubmissionError] = useState<string | null>(null);
 
     const hasLogo = formData.hasLogo || 'No';
+
+    // EIRL: Auto-set powers to single-person defaults
+    useEffect(() => {
+        if (formData.companyType === 'EIRL') {
+            const titular = formData.partners[0];
+            const titularName = titular ? `${titular.names} ${titular.surnames}`.trim() : '';
+            const updates: Partial<FormData> = {};
+            if (formData.legalSignaturePowers !== 'Solo el Gerente') updates.legalSignaturePowers = 'Solo el Gerente';
+            if (formData.bankPowers !== 'Solo el Gerente') updates.bankPowers = 'Solo el Gerente';
+            if (titularName && formData.bankAuthorizedPerson1 !== titularName) updates.bankAuthorizedPerson1 = titularName;
+            if (Object.keys(updates).length > 0) updateFormData(updates);
+        }
+    }, [formData.companyType]);
 
     const inputClass = "w-full px-5 py-4 rounded-xl bg-white border border-gray-200 text-text-primary placeholder-gray-400 focus:outline-none focus:border-sbs-blue focus:ring-4 focus:ring-sbs-blue/10 transition-all duration-300 shadow-sm text-sm font-medium";
     const labelClass = "block text-xs font-bold text-text-tertiary mb-2 uppercase tracking-widest";
@@ -709,77 +722,97 @@ const PostPaymentForm: React.FC<PostPaymentFormProps> = ({ formData, updateFormD
 
                      </div>
 
+                     {formData.companyType === 'EIRL' ? (
+                         <div className="space-y-6">
+                             <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 text-sm text-amber-800 leading-relaxed">
+                                 Como <strong>E.I.R.L.</strong>, el titular ejerce todos los poderes de firma y representación legal de forma individual. No aplica firma conjunta ni indistinta, ya que la empresa tiene un único dueño.
+                             </div>
 
+                             <div>
+                                 <label className={labelClass}>Persona Autorizada en el Banco</label>
+                                 <input
+                                     name="bankAuthorizedPerson1"
+                                     value={formData.bankAuthorizedPerson1}
+                                     onChange={handleChange}
+                                     className={`${inputClass} ${errors.bankAuthorizedPerson1 ? 'border-red-300' : ''}`}
+                                     placeholder="Nombre del titular autorizado"
+                                 />
+                                 {errors.bankAuthorizedPerson1 && <p className="text-red-500 text-xs mt-1 font-bold">{errors.bankAuthorizedPerson1 as string}</p>}
+                             </div>
+                         </div>
+                     ) : (
+                         <>
+                             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
 
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                 <div>
 
-                         <div>
+                                     <label className={labelClass}>Firma Legal/Contratos</label>
 
-                             <label className={labelClass}>Firma Legal/Contratos</label>
+                                     <div className="space-y-2">
 
-                             <div className="space-y-2">
+                                         {['Solo el Gerente', 'Firma Conjunta', 'Firma Indistinta'].map(opt => (
 
-                                 {['Solo el Gerente', 'Firma Conjunta', 'Firma Indistinta'].map(opt => (
+                                             <label key={opt} className="flex items-center space-x-2">
 
-                                     <label key={opt} className="flex items-center space-x-2">
+                                                 <input type="radio" name="legalSignaturePowers" value={opt} checked={formData.legalSignaturePowers === opt} onChange={handleChange} className="text-sbs-blue focus:ring-sbs-blue" />
 
-                                         <input type="radio" name="legalSignaturePowers" value={opt} checked={formData.legalSignaturePowers === opt} onChange={handleChange} className="text-sbs-blue focus:ring-sbs-blue" />
+                                                 <span className="text-sm">{opt}</span>
 
-                                         <span className="text-sm">{opt}</span>
+                                             </label>
 
-                                     </label>
+                                         ))}
 
-                                 ))}
+                                     </div>
+
+                                     {errors.legalSignaturePowers && <p className="text-red-500 text-xs mt-1 font-bold">{errors.legalSignaturePowers as string}</p>}
+
+                                 </div>
+
+                                 <div>
+
+                                     <label className={labelClass}>Poder Bancario (Cheques)</label>
+
+                                     <div className="space-y-2">
+
+                                         {['Solo el Gerente', 'Firma Conjunta', 'Firma Indistinta'].map(opt => (
+
+                                             <label key={opt} className="flex items-center space-x-2">
+
+                                                 <input type="radio" name="bankPowers" value={opt} checked={formData.bankPowers === opt} onChange={handleChange} className="text-sbs-blue focus:ring-sbs-blue" />
+
+                                                 <span className="text-sm">{opt}</span>
+
+                                             </label>
+
+                                         ))}
+
+                                     </div>
+
+                                     {errors.bankPowers && <p className="text-red-500 text-xs mt-1 font-bold">{errors.bankPowers as string}</p>}
+
+                                 </div>
 
                              </div>
 
-                             {errors.legalSignaturePowers && <p className="text-red-500 text-xs mt-1 font-bold">{errors.legalSignaturePowers as string}</p>}
 
-                         </div>
 
-                         <div>
+                             <div>
 
-                             <label className={labelClass}>Poder Bancario (Cheques)</label>
+                                 <label className={labelClass}>Personas Autorizadas Banco</label>
 
-                             <div className="space-y-2">
+                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-                                 {['Solo el Gerente', 'Firma Conjunta', 'Firma Indistinta'].map(opt => (
+                                    <input name="bankAuthorizedPerson1" value={formData.bankAuthorizedPerson1} onChange={handleChange} className={`${inputClass} ${errors.bankAuthorizedPerson1 ? 'border-red-300' : ''}`} placeholder="Persona 1 (Obligatorio)" />
 
-                                     <label key={opt} className="flex items-center space-x-2">
+                                    <input name="bankAuthorizedPerson2" value={formData.bankAuthorizedPerson2} onChange={handleChange} className={inputClass} placeholder="Persona 2 (Opcional)" />
 
-                                         <input type="radio" name="bankPowers" value={opt} checked={formData.bankPowers === opt} onChange={handleChange} className="text-sbs-blue focus:ring-sbs-blue" />
+                                 </div>
 
-                                         <span className="text-sm">{opt}</span>
-
-                                     </label>
-
-                                 ))}
+                                 {errors.bankAuthorizedPerson1 && <p className="text-red-500 text-xs mt-1 font-bold">{errors.bankAuthorizedPerson1 as string}</p>}
 
                              </div>
-
-                             {errors.bankPowers && <p className="text-red-500 text-xs mt-1 font-bold">{errors.bankPowers as string}</p>}
-
-                         </div>
-
-                     </div>
-
-
-
-                     <div>
-
-                         <label className={labelClass}>Personas Autorizadas Banco</label>
-
-                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-
-                            <input name="bankAuthorizedPerson1" value={formData.bankAuthorizedPerson1} onChange={handleChange} className={`${inputClass} ${errors.bankAuthorizedPerson1 ? 'border-red-300' : ''}`} placeholder="Persona 1 (Obligatorio)" />
-
-                            <input name="bankAuthorizedPerson2" value={formData.bankAuthorizedPerson2} onChange={handleChange} className={inputClass} placeholder="Persona 2 (Opcional)" />
-
-                         </div>
-
-                         {errors.bankAuthorizedPerson1 && <p className="text-red-500 text-xs mt-1 font-bold">{errors.bankAuthorizedPerson1 as string}</p>}
-
-                     </div>
+                         </>
+                     )}
 
 
 

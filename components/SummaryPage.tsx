@@ -51,11 +51,17 @@ const SummaryPage: React.FC<SummaryPageProps> = ({ formData, nextStep, prevStep 
         return managers;
     }, [formData.partners, formData.manager]);
 
-    // Obtener el Titular de la Firma Digital
+    // Obtener el Titular de la Firma Digital (soporta gerente externo con id = -1)
     const digitalSignatureHolder = useMemo(() => {
         if (!formData.digitalSignatureHolderId) return null;
-        return formData.partners.find(p => p.id === formData.digitalSignatureHolderId);
-    }, [formData.partners, formData.digitalSignatureHolderId]);
+        if (formData.digitalSignatureHolderId === -1) {
+            // Es el gerente externo
+            return { names: formData.manager.name, surnames: '', idNumber: formData.manager.idNumber, isExternal: true };
+        }
+        const partner = formData.partners.find(p => p.id === formData.digitalSignatureHolderId);
+        if (!partner) return null;
+        return { ...partner, isExternal: false };
+    }, [formData.partners, formData.digitalSignatureHolderId, formData.manager]);
 
     const SectionHeader = ({ title, icon }: { title: string, icon: React.ReactNode }) => (
         <div className="flex items-center mb-6 border-b border-gray-100 pb-4">
@@ -103,22 +109,6 @@ const SummaryPage: React.FC<SummaryPageProps> = ({ formData, nextStep, prevStep 
                         </div>
                     </div>
 
-                    {/* Alerta depósito EIRL */}
-                    {formData.companyType === 'EIRL' && (
-                        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 flex items-start gap-4">
-                            <div className="text-amber-600 flex-shrink-0 mt-1">
-                                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                                </svg>
-                            </div>
-                            <div>
-                                <p className="text-sm font-bold text-amber-900 mb-2">Requisito Legal: Depósito del Capital Social</p>
-                                <p className="text-xs text-amber-800 leading-relaxed">
-                                    Como E.I.R.L., el capital social deberá depositarse en una cuenta bancaria a nombre de la empresa en formación. Tras la emisión del Registro Mercantil, estos fondos serán devueltos automáticamente. Este depósito es obligatorio según la ley y es parte del proceso de constitución.
-                                </p>
-                            </div>
-                        </div>
-                    )}
 
                     {/* 2. Estructura Administrativa */}
                     <div className="bg-white p-8 rounded-[2rem] shadow-premium border border-premium-border relative overflow-hidden group hover:border-blue-100 transition-colors">
@@ -156,11 +146,13 @@ const SummaryPage: React.FC<SummaryPageProps> = ({ formData, nextStep, prevStep 
                                     <div className="flex justify-between items-center text-sm bg-green-50 p-3 rounded-xl border border-green-100">
                                         <div>
                                             <span className="font-bold text-green-700 block">
-                                                {digitalSignatureHolder.names} {digitalSignatureHolder.surnames}
+                                                {digitalSignatureHolder.names}{digitalSignatureHolder.surnames ? ` ${digitalSignatureHolder.surnames}` : ''}
                                             </span>
                                             <span className="text-xs text-gray-500 font-mono">{digitalSignatureHolder.idNumber}</span>
                                         </div>
-                                        <span className="text-[10px] bg-green-600 text-white px-2 py-1 rounded font-bold">FIRMA DIGITAL</span>
+                                        <span className="text-[10px] bg-green-600 text-white px-2 py-1 rounded font-bold">
+                                            {(digitalSignatureHolder as any).isExternal ? 'GERENTE EXTERNO' : 'FIRMA DIGITAL'}
+                                        </span>
                                     </div>
                                 </div>
                             )}

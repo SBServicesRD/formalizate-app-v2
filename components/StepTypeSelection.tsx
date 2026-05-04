@@ -50,7 +50,7 @@ const StepTypeSelection: React.FC<StepTypeSelectionProps> = ({ formData, updateF
     };
 
     const handleEIRL = () => {
-        updateFormData({ companyType: 'EIRL' });
+        updateFormData({ companyType: 'EIRL', socialCapital: 50000 });
         nextStep();
     };
 

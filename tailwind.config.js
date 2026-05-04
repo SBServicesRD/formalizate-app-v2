@@ -47,11 +47,19 @@ export default {
           'float': {
             '0%, 100%': { transform: 'translateY(0)' },
             '50%': { transform: 'translateY(-6px)' },
+          },
+          'marquee': {
+            '0%': { transform: 'translateX(0)' },
+            '100%': { transform: 'translateX(calc(-100% / 2))' },
           }
+        },
+        willChange: {
+          'marquee': 'transform',
         },
         animation: {
           'fade-in-up': 'fade-in-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards',
           'float': 'float 6s ease-in-out infinite',
+          'marquee': 'marquee 60s linear infinite',
         },
       },
     },
