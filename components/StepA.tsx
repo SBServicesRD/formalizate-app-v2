@@ -580,10 +580,14 @@ const StepA: React.FC<StepAProps> = ({ formData, updateFormData, nextStep, prevS
                     <span className="bg-premium-surface-subtle text-sbs-blue rounded-xl w-10 h-10 flex items-center justify-center text-sm mr-4 font-extrabold border border-premium-border">0</span>
                     Tu Plan Seleccionado
                 </h3>
-                <div className="bg-blue-50/50 border border-sbs-blue/20 rounded-xl p-6 flex items-center justify-between">
-                    <div>
-                        <h4 className="text-sbs-blue font-bold text-xs uppercase tracking-wider mb-1">Plan Actual</h4>
+                <div className="flex flex-col sm:flex-row gap-4">
+                    <div className="bg-blue-50/50 border border-sbs-blue/20 rounded-xl p-6 flex-1">
+                        <h4 className="text-sbs-blue font-bold text-xs uppercase tracking-wider mb-1">Tu Plan</h4>
                         <p className="text-xl font-bold text-text-primary">{formData.packageName || 'Essential 360'}</p>
+                    </div>
+                    <div className="bg-blue-50/50 border border-sbs-blue/20 rounded-xl p-6 flex-1">
+                        <h4 className="text-sbs-blue font-bold text-xs uppercase tracking-wider mb-1">Tipo de Empresa</h4>
+                        <p className="text-xl font-bold text-text-primary">{formData.companyType || 'SRL'}</p>
                     </div>
                 </div>
             </section>
