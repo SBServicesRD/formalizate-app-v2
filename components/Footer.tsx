@@ -32,7 +32,8 @@ const Footer: React.FC<FooterProps> = ({ setPage }) => {
                     <div className="md:col-start-3">
                         <h4 className="font-bold tracking-wider uppercase text-sm mb-6 text-sbs-gray-400">Legal</h4>
                         <ul className="space-y-3 text-sm">
-                            <li><a href="#" onClick={(e) => { e.preventDefault(); setPage('privacy'); }} className="text-sbs-gray-300 hover:text-white transition-colors border-b border-transparent hover:border-white pb-0.5">Política de Privacidad</a></li>
+                                                        <li><a href="https://blog.formalizate.app" className="text-sbs-gray-300 hover:text-white transition-colors border-b border-transparent hover:border-white pb-0.5">Blog</a></li>
+<li><a href="#" onClick={(e) => { e.preventDefault(); setPage('privacy'); }} className="text-sbs-gray-300 hover:text-white transition-colors border-b border-transparent hover:border-white pb-0.5">Política de Privacidad</a></li>
                             <li><a href="#" onClick={(e) => { e.preventDefault(); setPage('terms'); }} className="text-sbs-gray-300 hover:text-white transition-colors border-b border-transparent hover:border-white pb-0.5">Términos y Condiciones</a></li>
                             <li><a href="#" onClick={(e) => { e.preventDefault(); setPage('refund'); }} className="text-sbs-gray-300 hover:text-white transition-colors border-b border-transparent hover:border-white pb-0.5">Política de Reembolso</a></li>
                         </ul>

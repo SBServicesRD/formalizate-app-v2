@@ -141,7 +141,14 @@ const Header: React.FC<HeaderProps> = ({ isLanding, showSaveExit = false, isDash
                                        onClick={scrollToSection}
                                    />
                                ))}
-                            </nav>
+                            
+                               <a
+                                   href="https://blog.formalizate.app"
+                                   className={`text-sm font-medium transition-all duration-300 px-4 py-2 rounded-full ${useLightMode ? 'text-gray-100 hover:text-white hover:bg-white/10' : 'text-text-secondary hover:text-sbs-blue hover:bg-gray-50'}`}
+                               >
+                                   Blog
+                               </a>
+</nav>
                         </div>
                     ) : (
                         <div className="hidden md:block">
@@ -188,7 +195,16 @@ const Header: React.FC<HeaderProps> = ({ isLanding, showSaveExit = false, isDash
                             </a>
                          ))}
                          
-                         {isLegal ? (
+                         
+                         {isLanding && (
+                             <a
+                                href="https://blog.formalizate.app"
+                                className="text-lg font-medium py-3 px-8 rounded-full w-full text-center transition-all duration-500 ease-in-out bg-transparent text-text-secondary hover:text-sbs-blue hover:bg-gray-50"
+                             >
+                                 Blog
+                             </a>
+                         )}
+{isLegal ? (
                              <button 
                                 onClick={() => { setIsMenuOpen(false); setPage('main'); }}
                                 className="w-full text-center font-medium py-3 px-8 rounded-full bg-gray-100 text-text-secondary hover:text-sbs-blue hover:bg-gray-200 transition-colors"
