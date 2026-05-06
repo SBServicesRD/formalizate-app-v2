@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { onAuthStateChanged, User, signOut } from 'firebase/auth';
-import { auth } from '../services/firebase';
+import type { User } from 'firebase/auth';
 import { AppStep, FormData } from '../../types';
 import { MANAGEMENT_DURATION, FISCAL_CLOSING_DATE, PackageName } from '../../constants';
 
@@ -59,17 +58,26 @@ export const useWizardState = () => {
     const [authLoading, setAuthLoading] = useState(true);
 
     useEffect(() => {
-        if (!auth) {
-            console.error('Firebase Auth no está disponible');
-            setAuthLoading(false);
-            return;
-        }
+        let unsubscribe: (() => void) | undefined;
 
-        const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-            setUser(firebaseUser);
+        Promise.all([
+            import('../services/firebase'),
+            import('firebase/auth'),
+        ]).then(([{ auth }, { onAuthStateChanged }]) => {
+            if (!auth) {
+                console.error('Firebase Auth no está disponible');
+                setAuthLoading(false);
+                return;
+            }
+            unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+                setUser(firebaseUser);
+                setAuthLoading(false);
+            });
+        }).catch(() => {
             setAuthLoading(false);
         });
-        return () => unsubscribe();
+
+        return () => unsubscribe?.();
     }, []);
 
     const isAuthenticated = !!user;
@@ -187,9 +195,11 @@ export const useWizardState = () => {
 
     const handleLogout = async () => {
         try {
-            if (auth) {
-                await signOut(auth);
-            }
+            const [{ auth }, { signOut }] = await Promise.all([
+                import('../services/firebase'),
+                import('firebase/auth'),
+            ]);
+            if (auth) await signOut(auth);
             setStep(AppStep.Landing);
             setPage('main');
         } catch (error) {
