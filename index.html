@@ -31,7 +31,9 @@
     <link rel="preconnect" href="https://sbservicesrd.firebaseapp.com" crossorigin>
     <link rel="preconnect" href="https://firebase.googleapis.com" crossorigin>
     <link rel="preconnect" href="https://firebaseinstallations.googleapis.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Async font load: preload trick swaps rel to stylesheet after download, eliminating render-block -->
+    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"></noscript>
 
     <script async defer src="https://www.paypal.com/sdk/js?client-id=AXym4Wmgllm5T2H25wgmyIYdghBkMzXLeqotgqNO5aGEK0q_2J2m1wMsZbSDH-n189kI_9OowzEG-lTt&currency=USD"></script>
 
@@ -118,6 +120,7 @@
         body {
             background-color: #FFFFFF;
             color: #111827;
+            font-family: Inter, ui-sans-serif, system-ui, sans-serif;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
         }
