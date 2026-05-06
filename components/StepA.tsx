@@ -983,14 +983,34 @@ const StepA: React.FC<StepAProps> = ({ formData, updateFormData, nextStep, prevS
                                 </div>
                                 <div className="grid grid-cols-1 gap-5 mb-6">
                                     <div>
-                                        <label className={labelClass}>Cédula / Pasaporte <Tooltip text="Formato obligatorio: 000-0000000-0 (Solo números)" /></label>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <label className="text-xs font-bold text-text-secondary uppercase tracking-widest flex items-center">
+                                                Documento <Tooltip text="Cédula o Pasaporte" />
+                                            </label>
+                                            <div className="flex bg-gray-100 p-1 rounded-lg">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => { handleTitularChange(i, 'documentType', 'Cédula'); handleTitularChange(i, 'idNumber', ''); }}
+                                                    className={`px-3 py-1.5 text-[10px] font-bold rounded-md transition-all ${t.documentType === 'Cédula' ? 'bg-white text-sbs-blue shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                                >
+                                                    Cédula
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => { handleTitularChange(i, 'documentType', 'Pasaporte'); handleTitularChange(i, 'idNumber', ''); }}
+                                                    className={`px-3 py-1.5 text-[10px] font-bold rounded-md transition-all ${t.documentType === 'Pasaporte' ? 'bg-white text-sbs-blue shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                                >
+                                                    Pasaporte
+                                                </button>
+                                            </div>
+                                        </div>
                                         <input 
-                                            placeholder="XXX-XXXXXXX-X" 
+                                            placeholder={t.documentType === 'Cédula' ? "XXX-XXXXXXX-X" : "Número de Pasaporte"} 
                                             value={t.idNumber} 
                                             onChange={(e) => handleTitularChange(i, 'idNumber', e.target.value)} 
                                             onBlur={(e) => handleTitularBlur(i, 'idNumber', e.target.value)}
                                             className={`${inputClass} font-mono tracking-wide ${isError(errId) ? 'border-red-300 bg-red-50' : ''}`} 
-                                            maxLength={13} 
+                                            maxLength={t.documentType === 'Cédula' ? 13 : 20} 
                                         />
                                         {isError(errId) && <p className="text-red-500 text-xs mt-2 font-bold ml-1">{errors[errId]}</p>}
                                     </div>
