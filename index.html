@@ -107,6 +107,10 @@
     }
     </script>
 
+    <!-- Preload LCP hero image (browser picks correct version per viewport) -->
+    <link rel="preload" href="https://storage.googleapis.com/pics_html/formalizateapp-heropic-mobile.webp" as="image" type="image/webp" media="(max-width: 768px)">
+    <link rel="preload" href="https://storage.googleapis.com/pics_html/formalizateapp-heropic.webp" as="image" type="image/webp" media="(min-width: 769px)">
+
     <style>
         html {
             font-size: 95%;
@@ -121,14 +125,14 @@
             width: 8px;
         }
         ::-webkit-scrollbar-track {
-            background: #FFFFFF; 
+            background: #FFFFFF;
         }
         ::-webkit-scrollbar-thumb {
-            background: #E2E8F0; 
+            background: #E2E8F0;
             border-radius: 99px;
         }
         ::-webkit-scrollbar-thumb:hover {
-            background: #CBD5E1; 
+            background: #CBD5E1;
         }
         .glass-panel {
             background: rgba(255, 255, 255, 0.8);
@@ -143,7 +147,8 @@
     <noscript><img height="1" width="1" style="display:none"
     src="https://www.facebook.com/tr?id=1381571496803418&ev=PageView&noscript=1"
     /></noscript>
-    <div id="root"></div>
+    <!-- Static shell: visible before React loads, replaced on mount -->
+    <div id="root"><div style="background:#f8fafc;min-height:100vh"><nav style="position:fixed;top:0;left:0;right:0;z-index:50;padding:1.25rem 1.5rem"><svg width="220" height="50" viewBox="0 0 220 50" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:160px;height:auto"><text x="2" y="33" font-family="Inter,sans-serif" font-size="24" font-weight="700" fill="#FFFFFF" letter-spacing="-0.5">Formalízate<tspan fill="#E63A47" dx="2">•</tspan><tspan dx="2">app</tspan></text></svg></nav><section style="position:relative;width:100%;min-height:100vh;display:flex;align-items:center;justify-content:center;overflow:hidden;padding-top:6rem;padding-bottom:3rem"><div style="position:absolute;inset:0;z-index:0"><picture><source media="(max-width:768px)" srcset="https://storage.googleapis.com/pics_html/formalizateapp-heropic-mobile.webp" type="image/webp"><img src="https://storage.googleapis.com/pics_html/formalizateapp-heropic.webp" alt="" style="width:100%;height:100%;object-fit:cover;object-position:25% center" fetchpriority="high" loading="eager" width="1920" height="1080" decoding="async"></picture><div style="position:absolute;inset:0;background:linear-gradient(to bottom,rgba(29,53,87,0.8),rgba(29,53,87,0.4),rgba(0,0,0,0.8))"></div><div style="position:absolute;inset:0;background:linear-gradient(to right,rgba(0,0,0,0.5),transparent)"></div></div><div style="position:relative;z-index:10;max-width:960px;margin:0 auto;padding:0 1.5rem;text-align:center;display:flex;flex-direction:column;align-items:center"><h1 style="font-size:clamp(2.25rem,6vw,4.5rem);font-weight:700;color:#fff;margin-bottom:2rem;line-height:1.1;letter-spacing:-0.02em;text-shadow:0 4px 6px rgba(0,0,0,.3);max-width:56rem">Formaliza tu empresa en RD 100% online</h1><p style="font-size:clamp(1rem,2vw,1.5rem);color:rgba(255,255,255,.9);max-width:48rem;margin:0 auto 1rem;line-height:1.6;background:rgba(0,0,0,.2);padding:1.5rem;border-radius:1rem;border:1px solid rgba(255,255,255,.05)">Un proceso claro y respaldado legalmente para operar en RD, sin trámites presenciales ni pérdida de tiempo.</p><p style="font-size:1rem;color:rgba(255,255,255,.9);max-width:48rem;margin:0 auto 3rem;line-height:1.6;padding:0 1.5rem">Diseñado para personas ocupadas que quieren hacerlo bien desde el inicio.</p><div style="font-family:Inter,sans-serif;font-size:1.125rem;font-weight:700;color:#fff;padding:1.25rem 2.5rem;background:linear-gradient(135deg,#E63A47,#c62d39);border-radius:9999px;display:inline-flex;align-items:center;box-shadow:0 20px 40px rgba(0,0,0,.3)">Formalízate Ahora!</div></div></section></div></div>
 <script type="module" src="/index.tsx"></script>
 </body>
 </html>
