@@ -426,26 +426,48 @@ const App: React.FC = () => {
                                 <nav className="mb-8 flex" aria-label="Breadcrumb">
                                     <ol className="inline-flex items-center space-x-1 md:space-x-3 text-xs font-medium text-gray-400">
                                         <li className="inline-flex items-center">
-                                            <a href="#" onClick={(e) => {e.preventDefault(); setStep(AppStep.Landing)}} className="hover:text-sbs-blue transition-colors">
+                                            <a href="#" onClick={(e) => {e.preventDefault(); setStep(AppStep.Landing); setTimeout(() => window.scrollTo(0,0), 100); }} className="hover:text-sbs-blue transition-colors">
                                                 Inicio
                                             </a>
                                         </li>
                                         <li>
                                             <div className="flex items-center">
                                                 <ChevronRight className="w-3 h-3 text-gray-300 mx-1" />
-                                                <a href="#" onClick={(e) => {e.preventDefault(); setStep(AppStep.StepTypeSelection)}} className="ml-1 hover:text-sbs-blue transition-colors">
+                                                <a href="#" onClick={(e) => {e.preventDefault(); setStep(AppStep.Landing); setTimeout(() => { const el = document.getElementById('servicios'); if(el) el.scrollIntoView(); }, 100); }} className="ml-1 hover:text-sbs-blue transition-colors">
                                                     Planes
                                                 </a>
                                             </div>
                                         </li>
-                                        <li aria-current="page">
-                                            <div className="flex items-center">
-                                                <ChevronRight className="w-3 h-3 text-gray-300 mx-1" />
-                                                <span className="ml-1 text-sbs-blue font-bold">
-                                                    {currentStep === AppStep.Summary ? 'Revisión' : 'Configuración'}
-                                                </span>
-                                            </div>
-                                        </li>
+                                        {currentStep >= AppStep.StepTypeSelection && (
+                                            <li>
+                                                <div className="flex items-center">
+                                                    <ChevronRight className="w-3 h-3 text-gray-300 mx-1" />
+                                                    <a href="#" onClick={(e) => {e.preventDefault(); setStep(AppStep.StepTypeSelection);}} className={`ml-1 transition-colors ${currentStep === AppStep.StepTypeSelection ? 'text-sbs-blue font-bold' : 'hover:text-sbs-blue'}`}>
+                                                        Estructura
+                                                    </a>
+                                                </div>
+                                            </li>
+                                        )}
+                                        {currentStep >= AppStep.StepA && (
+                                            <li>
+                                                <div className="flex items-center">
+                                                    <ChevronRight className="w-3 h-3 text-gray-300 mx-1" />
+                                                    <a href="#" onClick={(e) => {e.preventDefault(); if(currentStep > AppStep.StepA) setStep(AppStep.StepA);}} className={`ml-1 transition-colors ${currentStep >= AppStep.StepA && currentStep < AppStep.Summary ? 'text-sbs-blue font-bold' : 'hover:text-sbs-blue'}`}>
+                                                        Configuración
+                                                    </a>
+                                                </div>
+                                            </li>
+                                        )}
+                                        {currentStep >= AppStep.Summary && (
+                                            <li aria-current="page">
+                                                <div className="flex items-center">
+                                                    <ChevronRight className="w-3 h-3 text-gray-300 mx-1" />
+                                                    <span className={`ml-1 transition-colors ${currentStep === AppStep.Summary ? 'text-sbs-blue font-bold' : 'hover:text-sbs-blue'}`}>
+                                                        Revisión
+                                                    </span>
+                                                </div>
+                                            </li>
+                                        )}
                                     </ol>
                                 </nav>
                              )}
