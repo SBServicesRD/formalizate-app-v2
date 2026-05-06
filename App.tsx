@@ -10,7 +10,6 @@ import PostPaymentWelcome from './design/components/PostPaymentWelcome';
 import SignupPostPaymentPage from './components/SignupPostPaymentPage';
 import PostPaymentForm from './components/PostPaymentForm';
 import SuccessPage from './design/components/SuccessPage';
-import DashboardPage from './components/DashboardPage';
 import LoginPage from './components/LoginPage';
 import Header from './components/Header';
 import Footer from './design/components/Footer';
@@ -22,7 +21,6 @@ import StepB from './components/StepB';
 import StepC from './components/StepC';
 
 const PaymentPage = lazy(() => import('./components/PaymentPage'));
-const SecureDashboard = lazy(() => import('./components/SecureDashboard'));
 const TermsOfServicePage = lazy(() => import('./design/pages/TermsOfServicePage'));
 const PrivacyPolicyPage = lazy(() => import('./design/pages/PrivacyPolicyPage'));
 const RefundPolicyPage = lazy(() => import('./design/pages/RefundPolicyPage'));
@@ -33,6 +31,14 @@ const LoadingFallback = () => (
     <div className="min-h-screen flex flex-col items-center justify-center bg-premium-bg">
         <Loader2 className="w-8 h-8 text-sbs-blue animate-spin" />
         <p className="mt-4 text-text-secondary text-sm">Cargando...</p>
+    </div>
+);
+
+const DashboardPlaceholder = () => (
+    <div style={{ textAlign: 'center', padding: '4rem 1rem' }}>
+        <h1>Próximamente</h1>
+        <p>Tu panel de cliente estará disponible aquí.</p>
+        <a href="/">← Volver al inicio</a>
     </div>
 );
 
@@ -47,13 +53,13 @@ const getLocalStorageKey = (userId: string | null): string => {
 const App: React.FC = () => {
     const initialFormState: FormData = {
         companyType: 'SRL',
-        
+
         hasRegisteredName: 'No',
         nameOwnership: 'Un solo socio',
 
         companyName: '',
         socialObject: '',
-        
+
         companyStreet: '',
         companyStreetNumber: '',
         companySector: '',
@@ -67,7 +73,7 @@ const App: React.FC = () => {
             phone: '',
             isTitular: false
         },
-        
+
         titulars: [],
 
         fiscalClosing: FISCAL_CLOSING_DATE,
@@ -78,7 +84,7 @@ const App: React.FC = () => {
         packageName: 'Essential 360',
         paymentStatus: 'unpaid',
         paymentMethod: 'other',
-        
+
         ncfTypes: [],
     };
 
@@ -88,7 +94,7 @@ const App: React.FC = () => {
             const saved = localStorage.getItem(storageKey);
             if (saved) {
                 const parsed = JSON.parse(saved);
-                
+
                 if (parsed.formData) {
                     if (parsed.formData.titulars) {
                         parsed.formData.titulars = parsed.formData.titulars.map((t: any) => ({
@@ -97,7 +103,7 @@ const App: React.FC = () => {
                             idBack: null
                         }));
                     }
-                    
+
                     if (parsed.formData.partners) {
                         parsed.formData.partners = parsed.formData.partners.map((p: any) => ({
                             ...p,
@@ -121,7 +127,7 @@ const App: React.FC = () => {
     const [currentStep, setCurrentStep] = useState<AppStep>(AppStep.Landing);
     const [highestStepReached, setHighestStepReached] = useState<AppStep>(AppStep.Landing);
     const [formData, setFormData] = useState<FormData>(initialFormState);
-    
+
     const [page, setPage] = useState<PageView>('main');
     const [user, setUser] = useState<User | null>(null);
     const [authLoading, setAuthLoading] = useState(true);
@@ -144,7 +150,7 @@ const App: React.FC = () => {
 
     useEffect(() => {
         if (isAuthenticated && page === 'login') {
-            setStep(AppStep.Dashboard);
+            setStep(AppStep.Landing);
             setPage('main');
         }
     }, [isAuthenticated, page]);
@@ -184,7 +190,7 @@ const App: React.FC = () => {
             setHighestStepReached(step);
         }
     };
-    
+
     const handleStartFlow = (selectedPackage: PackageName) => {
         updateFormData({ packageName: selectedPackage });
         setStep(AppStep.StepTypeSelection);
@@ -233,7 +239,7 @@ const App: React.FC = () => {
             setStep(prevStep);
         }
     };
-    
+
     const goToStep = (step: AppStep) => {
         if (step <= highestStepReached) {
             if (step === AppStep.StepC) return;
@@ -274,26 +280,11 @@ const App: React.FC = () => {
             console.error("ERROR AL FINALIZAR LA SOLICITUD:", error);
         }
     }
-    
-    const goToDashboard = () => {
-        if (!isAuthenticated) {
-            setPage('login');
-            return;
-        }
-        setStep(AppStep.Dashboard);
-    }
 
     // SECURITY: Payment Guard to prevent access bypass
     const isPaymentVerified = formData.paymentStatus === 'paid' || formData.paymentStatus === 'pending_confirmation';
 
     const renderFormStep = () => {
-        if (currentStep === AppStep.Dashboard) {
-            if (!isAuthenticated) {
-                setPage('login');
-                return null;
-            }
-        }
-
         if ([AppStep.Login, AppStep.PostPaymentWelcome, AppStep.PostPaymentForm, AppStep.Success, AppStep.Dashboard].includes(currentStep)) {
             if (!isPaymentVerified) {
                 return (
@@ -324,27 +315,15 @@ const App: React.FC = () => {
                      </Suspense>
                  );
             case AppStep.Login:
-                // Post-pago: SOLO signup, nunca login
                 return <SignupPostPaymentPage onSignupComplete={handleStepLogin} />;
             case AppStep.PostPaymentWelcome:
                 return <PostPaymentWelcome onStartForm={goToNextStep} />;
             case AppStep.PostPaymentForm:
                 return <PostPaymentForm formData={formData} updateFormData={updateFormData} onComplete={handleFinalSubmit} />;
             case AppStep.Success:
-                return <SuccessPage formData={formData} startOver={goToDashboard} />;
+                return <SuccessPage formData={formData} startOver={() => setStep(AppStep.Landing)} />;
             case AppStep.Dashboard:
-                return (
-                    <Suspense fallback={<LoadingFallback />}>
-                        <SecureDashboard
-                            user={user}
-                            formData={formData}
-                            onExit={handleLogout}
-                            setStep={setStep}
-                        >
-                            <DashboardPage formData={formData} onExit={handleLogout} />
-                        </SecureDashboard>
-                    </Suspense>
-                );
+                return <DashboardPlaceholder />;
             default:
                 return <LandingPage onStart={handleStartFlow} />;
         }
@@ -361,27 +340,27 @@ const App: React.FC = () => {
         }
 
         switch (page) {
-            case 'privacy': 
+            case 'privacy':
                 return (
                     <Suspense fallback={<LoadingFallback />}>
                         <PrivacyPolicyPage />
                     </Suspense>
                 );
-            case 'terms': 
+            case 'terms':
                 return (
                     <Suspense fallback={<LoadingFallback />}>
                         <TermsOfServicePage />
                     </Suspense>
                 );
-            case 'refund': 
+            case 'refund':
                 return (
                     <Suspense fallback={<LoadingFallback />}>
                         <RefundPolicyPage />
                     </Suspense>
                 );
-            case 'login': 
+            case 'login':
                 if (isAuthenticated) {
-                    setStep(AppStep.Dashboard);
+                    setStep(AppStep.Landing);
                     setPage('main');
                     return null;
                 }
@@ -396,31 +375,12 @@ const App: React.FC = () => {
                     return <LandingPage onStart={handleStartFlow} />;
                 }
                 if (currentStep === AppStep.Dashboard) {
-                    if (!isAuthenticated) {
-                        setPage('login');
-                        return null;
-                    }
-                    if (!isPaymentVerified) {
-                        setStep(AppStep.Payment);
-                        return null; 
-                    }
-                    return (
-                        <Suspense fallback={<LoadingFallback />}>
-                            <SecureDashboard
-                                user={user}
-                                formData={formData}
-                                onExit={handleLogout}
-                                setStep={setStep}
-                            >
-                                <DashboardPage formData={formData} onExit={handleLogout} />
-                            </SecureDashboard>
-                        </Suspense>
-                    );
+                    return <DashboardPlaceholder />;
                 }
                 return (
                     <div className="min-h-screen flex flex-col items-center pt-32 pb-24 relative bg-premium-bg">
                         <div className="absolute top-0 left-0 w-full h-[500px] bg-gradient-to-b from-premium-surface-subtle to-transparent pointer-events-none z-0" />
-                        
+
                         <main className="w-full max-w-5xl bg-white shadow-premium border border-premium-border p-8 sm:p-16 rounded-[2.5rem] relative z-10 mx-4 animate-fade-in-up">
                              {currentStep >= AppStep.StepTypeSelection && (
                                 <nav className="mb-8 flex" aria-label="Breadcrumb">
@@ -450,7 +410,7 @@ const App: React.FC = () => {
                                 </nav>
                              )}
 
-                            {currentStep >= AppStep.StepTypeSelection && currentStep < AppStep.Login && 
+                            {currentStep >= AppStep.StepTypeSelection && currentStep < AppStep.Login &&
                                 <StepProgressBar currentStep={currentStep} highestStepReached={highestStepReached} goToStep={goToStep} />
                             }
                             {renderFormStep()}
@@ -461,20 +421,20 @@ const App: React.FC = () => {
     }
 
     const dummyStart = () => handleStartFlow('Essential 360');
-    
+
     const isLandingPage = currentStep === AppStep.Landing && page === 'main';
     const isDashboard = currentStep === AppStep.Dashboard;
     const isLegalPage = page !== 'main';
 
     return (
         <div className="bg-premium-bg min-h-screen text-text-primary font-sans selection:bg-sbs-blue selection:text-white">
-            <Header 
-                isLanding={isLandingPage} 
+            <Header
+                isLanding={isLandingPage}
                 showSaveExit={!isLandingPage && !isDashboard && !isLegalPage}
                 isDashboard={isDashboard}
                 isLegal={isLegalPage}
-                onStart={dummyStart} 
-                setPage={setPage} 
+                onStart={dummyStart}
+                setPage={setPage}
                 onExit={() => setStep(AppStep.Landing)}
             />
             <div className={`${isLandingPage ? '' : 'pt-0'}`}>
@@ -487,4 +447,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-
