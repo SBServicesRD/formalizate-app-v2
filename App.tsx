@@ -1,23 +1,23 @@
 import React, { lazy, Suspense } from 'react';
 import { ChevronRight, Loader2 } from 'lucide-react';
 import LandingPage from './components/LandingPage';
-import StepProgressBar from './design/components/StepProgressBar';
-import StepTypeSelection from './components/StepTypeSelection';
-import StepA from './components/StepA';
-import PostPaymentWelcome from './design/components/PostPaymentWelcome';
-import SignupPostPaymentPage from './components/SignupPostPaymentPage';
-import PostPaymentForm from './components/PostPaymentForm';
-import SuccessPage from './design/components/SuccessPage';
-import LoginPage from './components/LoginPage';
 import Header from './components/Header';
 import Footer from './design/components/Footer';
 import WhatsAppWidget from './components/WhatsAppWidget';
-import SummaryPage from './components/SummaryPage';
 import { AppStep } from './types';
-import StepB from './components/StepB';
-import StepC from './components/StepC';
 import { useWizardState } from './core/hooks/useWizardState';
 
+const StepProgressBar = lazy(() => import('./design/components/StepProgressBar'));
+const StepTypeSelection = lazy(() => import('./components/StepTypeSelection'));
+const StepA = lazy(() => import('./components/StepA'));
+const StepB = lazy(() => import('./components/StepB'));
+const StepC = lazy(() => import('./components/StepC'));
+const SummaryPage = lazy(() => import('./components/SummaryPage'));
+const SignupPostPaymentPage = lazy(() => import('./components/SignupPostPaymentPage'));
+const PostPaymentWelcome = lazy(() => import('./design/components/PostPaymentWelcome'));
+const PostPaymentForm = lazy(() => import('./components/PostPaymentForm'));
+const SuccessPage = lazy(() => import('./design/components/SuccessPage'));
+const LoginPage = lazy(() => import('./components/LoginPage'));
 const PaymentPage = lazy(() => import('./components/PaymentPage'));
 const TermsOfServicePage = lazy(() => import('./design/pages/TermsOfServicePage'));
 const PrivacyPolicyPage = lazy(() => import('./design/pages/PrivacyPolicyPage'));
@@ -63,11 +63,7 @@ const App: React.FC = () => {
     const renderFormStep = () => {
         if ([AppStep.Login, AppStep.PostPaymentWelcome, AppStep.PostPaymentForm, AppStep.Success, AppStep.Dashboard].includes(currentStep)) {
             if (!isPaymentVerified) {
-                return (
-                    <Suspense fallback={<LoadingFallback />}>
-                        <PaymentPage formData={formData} updateFormData={updateFormData} onPaymentSuccess={handlePaymentSuccess} prevStep={goToPrevStep} />
-                    </Suspense>
-                );
+                return <PaymentPage formData={formData} updateFormData={updateFormData} onPaymentSuccess={handlePaymentSuccess} prevStep={goToPrevStep} />;
             }
         }
 
@@ -79,17 +75,13 @@ const App: React.FC = () => {
             case AppStep.StepA:
                 return <StepA formData={formData} updateFormData={updateFormData} nextStep={goToNextStep} prevStep={goToPrevStep} />;
             case AppStep.StepB:
-                 return <StepB formData={formData} updateFormData={updateFormData} nextStep={goToNextStep} prevStep={goToPrevStep} />;
+                return <StepB formData={formData} updateFormData={updateFormData} nextStep={goToNextStep} prevStep={goToPrevStep} />;
             case AppStep.StepC:
-                 return <StepC formData={formData} updateFormData={updateFormData} nextStep={goToNextStep} prevStep={goToPrevStep} />;
+                return <StepC formData={formData} updateFormData={updateFormData} nextStep={goToNextStep} prevStep={goToPrevStep} />;
             case AppStep.Summary:
-                 return <SummaryPage formData={formData} nextStep={goToNextStep} prevStep={goToPrevStep} />;
+                return <SummaryPage formData={formData} nextStep={goToNextStep} prevStep={goToPrevStep} />;
             case AppStep.Payment:
-                 return (
-                     <Suspense fallback={<LoadingFallback />}>
-                         <PaymentPage formData={formData} updateFormData={updateFormData} onPaymentSuccess={handlePaymentSuccess} prevStep={goToPrevStep} />
-                     </Suspense>
-                 );
+                return <PaymentPage formData={formData} updateFormData={updateFormData} onPaymentSuccess={handlePaymentSuccess} prevStep={goToPrevStep} />;
             case AppStep.Login:
                 return <SignupPostPaymentPage onSignupComplete={handleStepLogin} />;
             case AppStep.PostPaymentWelcome:
@@ -106,6 +98,10 @@ const App: React.FC = () => {
     };
 
     const renderPageContent = () => {
+        if (page === 'main' && currentStep === AppStep.Landing) {
+            return <LandingPage onStart={handleStartFlow} />;
+        }
+
         if (authLoading) {
             return (
                 <div className="min-h-screen flex flex-col items-center justify-center bg-premium-bg">
@@ -142,7 +138,9 @@ const App: React.FC = () => {
                 }
                 return (
                     <div className="min-h-screen flex flex-col items-center justify-center bg-premium-bg pt-20 pb-20">
-                        <LoginPage onLogin={handleStandaloneLogin} />
+                        <Suspense fallback={<LoadingFallback />}>
+                            <LoginPage onLogin={handleStandaloneLogin} />
+                        </Suspense>
                     </div>
                 );
             case 'main':
@@ -158,38 +156,39 @@ const App: React.FC = () => {
                         <div className="absolute top-0 left-0 w-full h-[500px] bg-gradient-to-b from-premium-surface-subtle to-transparent pointer-events-none z-0" />
 
                         <main className="w-full max-w-5xl bg-white shadow-premium border border-premium-border p-8 sm:p-16 rounded-[2.5rem] relative z-10 mx-4 animate-fade-in-up">
-                             {currentStep >= AppStep.StepTypeSelection && (
-                                <nav className="mb-8 flex" aria-label="Breadcrumb">
-                                    <ol className="inline-flex items-center space-x-1 md:space-x-3 text-xs font-medium text-gray-400">
-                                        <li className="inline-flex items-center">
-                                            <a href="#" onClick={(e) => {e.preventDefault(); setStep(AppStep.Landing)}} className="hover:text-sbs-blue transition-colors">
-                                                Inicio
-                                            </a>
-                                        </li>
-                                        <li>
-                                            <div className="flex items-center">
-                                                <ChevronRight className="w-3 h-3 text-gray-300 mx-1" />
-                                                <a href="#" onClick={(e) => {e.preventDefault(); setStep(AppStep.StepTypeSelection)}} className="ml-1 hover:text-sbs-blue transition-colors">
-                                                    Planes
+                            <Suspense fallback={<LoadingFallback />}>
+                                {currentStep >= AppStep.StepTypeSelection && (
+                                    <nav className="mb-8 flex" aria-label="Breadcrumb">
+                                        <ol className="inline-flex items-center space-x-1 md:space-x-3 text-xs font-medium text-gray-400">
+                                            <li className="inline-flex items-center">
+                                                <a href="#" onClick={(e) => {e.preventDefault(); setStep(AppStep.Landing)}} className="hover:text-sbs-blue transition-colors">
+                                                    Inicio
                                                 </a>
-                                            </div>
-                                        </li>
-                                        <li aria-current="page">
-                                            <div className="flex items-center">
-                                                <ChevronRight className="w-3 h-3 text-gray-300 mx-1" />
-                                                <span className="ml-1 text-sbs-blue font-bold">
-                                                    {currentStep === AppStep.Summary ? 'Revisión' : 'Configuración'}
-                                                </span>
-                                            </div>
-                                        </li>
-                                    </ol>
-                                </nav>
-                             )}
-
-                            {currentStep >= AppStep.StepTypeSelection && currentStep < AppStep.Login &&
-                                <StepProgressBar currentStep={currentStep} highestStepReached={highestStepReached} goToStep={goToStep} />
-                            }
-                            {renderFormStep()}
+                                            </li>
+                                            <li>
+                                                <div className="flex items-center">
+                                                    <ChevronRight className="w-3 h-3 text-gray-300 mx-1" />
+                                                    <a href="#" onClick={(e) => {e.preventDefault(); setStep(AppStep.StepTypeSelection)}} className="ml-1 hover:text-sbs-blue transition-colors">
+                                                        Planes
+                                                    </a>
+                                                </div>
+                                            </li>
+                                            <li aria-current="page">
+                                                <div className="flex items-center">
+                                                    <ChevronRight className="w-3 h-3 text-gray-300 mx-1" />
+                                                    <span className="ml-1 text-sbs-blue font-bold">
+                                                        {currentStep === AppStep.Summary ? 'Revisión' : 'Configuración'}
+                                                    </span>
+                                                </div>
+                                            </li>
+                                        </ol>
+                                    </nav>
+                                )}
+                                {currentStep >= AppStep.StepTypeSelection && currentStep < AppStep.Login &&
+                                    <StepProgressBar currentStep={currentStep} highestStepReached={highestStepReached} goToStep={goToStep} />
+                                }
+                                {renderFormStep()}
+                            </Suspense>
                         </main>
                     </div>
                 );
