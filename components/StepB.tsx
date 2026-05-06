@@ -170,7 +170,13 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                      updatedPartner.addressProvince = '';
                      updatedPartner.addressCity = '';
 
-                     
+                     if (value === 'República Dominicana') {
+                         updatedPartner.documentType = 'Cédula';
+                         updatedPartner.idNumber = ''; 
+                     } else {
+                         updatedPartner.documentType = 'Pasaporte';
+                         updatedPartner.idNumber = '';
+                     }
                 }
                 
                 // Aplicar máscara SOLO si es Cédula
@@ -553,35 +559,21 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                             </div>
                             <div>
                                 <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1 tracking-wider">
-                                    Documento <span className="text-sbs-red">*</span>
+                                    {(formData.manager.nationality || 'República Dominicana') === 'República Dominicana' ? 'Cédula' : 'Pasaporte'} <span className="text-sbs-red">*</span>
                                 </label>
-                                <div className="flex flex-col sm:flex-row gap-2">
-                                    <select 
-                                        value={formData.manager.documentType || 'Cédula'} 
-                                        onChange={e => {
-                                            updateFormData({ 
-                                                manager: { ...formData.manager, documentType: e.target.value as 'Cédula'|'Pasaporte', idNumber: '' } 
-                                            });
-                                        }}
-                                        className={`${inputClass} sm:w-1/3 mb-2 sm:mb-0`}
-                                    >
-                                        <option value="Cédula">Cédula</option>
-                                        <option value="Pasaporte">Pasaporte</option>
-                                    </select>
-                                    <input 
-                                        placeholder={formData.manager.documentType === 'Pasaporte' ? 'Número de Pasaporte' : 'XXX-XXXXXXX-X'} 
-                                        value={formData.manager.idNumber} 
-                                        onChange={e => {
-                                            const isCédula = formData.manager.documentType !== 'Pasaporte';
-                                            const value = isCédula ? formatCedula(e.target.value) : e.target.value;
-                                            updateFormData({ 
-                                                manager: { ...formData.manager, idNumber: value } 
-                                            });
-                                        }}
-                                        className={`${inputClass} font-mono sm:w-2/3`}
-                                        maxLength={formData.manager.documentType === 'Pasaporte' ? 20 : 13}
-                                    />
-                                </div>
+                                <input 
+                                    placeholder={(formData.manager.nationality || 'República Dominicana') === 'República Dominicana' ? 'XXX-XXXXXXX-X' : 'Número de Pasaporte'} 
+                                    value={formData.manager.idNumber} 
+                                    onChange={e => {
+                                        const isDominican = (formData.manager.nationality || 'República Dominicana') === 'República Dominicana';
+                                        const value = isDominican ? formatCedula(e.target.value) : e.target.value;
+                                        updateFormData({ 
+                                            manager: { ...formData.manager, idNumber: value } 
+                                        });
+                                    }}
+                                    className={`${inputClass} font-mono`}
+                                    maxLength={(formData.manager.nationality || 'República Dominicana') === 'República Dominicana' ? 13 : 20}
+                                />
                             </div>
                             <div>
                                 <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1 tracking-wider">
@@ -774,29 +766,17 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                         </div>
                         <div>
                             <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1 tracking-wider">
-                                Documento <Tooltip text="Cédula o Pasaporte" />
+                                {partner.documentType} <Tooltip text={isForeigner ? "Número de Pasaporte" : "Formato: XXX-XXXXXXX-X"} />
                             </label>
-                            <div className="flex flex-col sm:flex-row gap-2">
-                                <select 
-                                    value={partner.documentType} 
-                                    onChange={(e) => {
-                                        handlePartnerChange(partner.id, 'documentType', e.target.value);
-                                        handlePartnerChange(partner.id, 'idNumber', '');
-                                    }} 
-                                    className={`${inputClass} sm:w-1/3 mb-2 sm:mb-0`}
-                                >
-                                    <option value="Cédula">Cédula</option>
-                                    <option value="Pasaporte">Pasaporte</option>
-                                </select>
-                                <input 
-                                    placeholder={partner.documentType === 'Cédula' ? "XXX-XXXXXXX-X" : "No. de Pasaporte"} 
-                                    value={partner.idNumber} 
-                                    onChange={e => handlePartnerChange(partner.id, 'idNumber', e.target.value)} 
-                                    onBlur={(e) => handleBlur(partner.id, 'idNumber', e.target.value)}
-                                    className={`${inputClass} font-mono sm:w-2/3 ${isError(partner.id, 'idNumber') ? 'border-red-300 bg-red-50' : ''}`} 
-                                    maxLength={partner.documentType === 'Cédula' ? 13 : 20}
-                                />
-                            </div>
+                            <input 
+                                placeholder={isForeigner ? "Número Pasaporte" : "XXX-XXXXXXX-X"} 
+                                value={partner.idNumber} 
+                                onChange={e => handlePartnerChange(partner.id, 'idNumber', e.target.value)} 
+                                onBlur={(e) => handleBlur(partner.id, 'idNumber', e.target.value)}
+                                className={`${inputClass} font-mono ${isError(partner.id, 'idNumber') ? 'border-red-300 bg-red-50' : ''}`} 
+                                maxLength={isForeigner ? 20 : 13}
+                                inputMode={isForeigner ? "text" : "numeric"}
+                            />
                             {isError(partner.id, 'idNumber') && <p className="text-red-500 text-xs mt-1">{errors[partner.id]['idNumber']}</p>}
                         </div>
                         
