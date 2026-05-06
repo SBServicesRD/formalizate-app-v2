@@ -585,32 +585,11 @@ const StepA: React.FC<StepAProps> = ({ formData, updateFormData, nextStep, prevS
                     <span className="bg-premium-surface-subtle text-sbs-blue rounded-xl w-10 h-10 flex items-center justify-center text-sm mr-4 font-extrabold border border-premium-border">0</span>
                     Tu Plan Seleccionado
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {(Object.keys(PACKAGES) as PackageName[]).map((pkgName) => {
-                        const pkg = PACKAGES[pkgName];
-                        const isSelected = formData.packageName === pkgName;
-                        return (
-                            <div 
-                                key={pkgName} 
-                                onClick={() => updateFormData({ packageName: pkgName })}
-                                className={`relative p-5 rounded-xl border-2 cursor-pointer transition-all duration-300 flex flex-col justify-between ${
-                                    isSelected 
-                                    ? 'border-sbs-blue bg-blue-50/50 shadow-md' 
-                                    : 'border-gray-100 bg-white hover:border-gray-300'
-                                }`}
-                            >
-                                {isSelected && (
-                                    <div className="absolute top-3 right-3 text-sbs-blue">
-                                        <CheckCircle className="w-6 h-6" />
-                                    </div>
-                                )}
-                                <div>
-                                    <h4 className={`font-bold text-sm mb-2 ${isSelected ? 'text-sbs-blue' : 'text-gray-600'}`}>{pkgName}</h4>
-                                    <p className={`text-2xl font-bold ${isSelected ? 'text-text-primary' : 'text-gray-800'}`}>{pkg.formattedPrice}</p>
-                                </div>
-                            </div>
-                        );
-                    })}
+                <div className="bg-blue-50/50 border border-sbs-blue/20 rounded-xl p-6 flex items-center justify-between">
+                    <div>
+                        <h4 className="text-sbs-blue font-bold text-xs uppercase tracking-wider mb-1">Plan Actual</h4>
+                        <p className="text-xl font-bold text-text-primary">{formData.packageName || 'Essential 360'}</p>
+                    </div>
                 </div>
             </section>
 
