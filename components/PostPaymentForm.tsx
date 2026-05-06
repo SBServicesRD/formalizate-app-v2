@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+﻿import React from 'react';
 import { FormData } from '../types';
 import { NCF_OPTIONS, FISCAL_CLOSING_DATE, ALLOWED_FILE_TYPES } from '../constants';
-import { validateRequired, formatPhoneNumber, validateEmail, formatDateMask, validateDate, validatePhoneNumber, sanitizeInput } from '../core/utils/validation';
-import { saveFullApplication } from '../core/services/documentService';
+import { usePostPaymentForm, Section } from '../core/hooks/usePostPaymentForm';
 import {
     AlertCircle,
     AlertTriangle,
@@ -20,8 +19,6 @@ interface PostPaymentFormProps {
     updateFormData: (data: Partial<FormData>) => void;
     onComplete: () => void;
 }
-
-type Section = 'details' | 'location' | 'powers' | 'fiscal' | 'references';
 
 const Tooltip = ({ text }: { text: string }) => (
     <div className="group relative inline-block ml-2 align-middle">
@@ -81,246 +78,30 @@ const FilePreview = ({ file, onRemove }: { file: File, onRemove: () => void }) =
 
 
 const PostPaymentForm: React.FC<PostPaymentFormProps> = ({ formData, updateFormData, onComplete }) => {
-    const [activeSection, setActiveSection] = useState<Section>('details');
-    const [errors, setErrors] = useState<Record<string, string | Record<string,string>>>({});
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const [submissionError, setSubmissionError] = useState<string | null>(null);
+    const {
+        activeSection, setActiveSection,
+        errors,
+        isSubmitting,
+        submissionError,
+        handleChange,
+        handleCopyApplicant,
+        handleNcfToggle,
+        validateSection,
+        toggleSection,
+        nextSection,
+        handleFinalSubmit,
+    } = usePostPaymentForm(formData, updateFormData, onComplete);
 
     const hasLogo = formData.hasLogo || 'No';
 
-    // EIRL: Auto-set powers to single-person defaults
-    useEffect(() => {
-        if (formData.companyType === 'EIRL') {
-            const titular = formData.partners[0];
-            const titularName = titular ? `${titular.names} ${titular.surnames}`.trim() : '';
-            const updates: Partial<FormData> = {};
-            if (formData.legalSignaturePowers !== 'Solo el Gerente') updates.legalSignaturePowers = 'Solo el Gerente';
-            if (formData.bankPowers !== 'Solo el Gerente') updates.bankPowers = 'Solo el Gerente';
-            if (titularName && formData.bankAuthorizedPerson1 !== titularName) updates.bankAuthorizedPerson1 = titularName;
-            if (Object.keys(updates).length > 0) updateFormData(updates);
-        }
-    }, [formData.companyType]);
-
     const inputClass = "w-full px-5 py-4 rounded-xl bg-white border border-gray-200 text-text-primary placeholder-gray-400 focus:outline-none focus:border-sbs-blue focus:ring-4 focus:ring-sbs-blue/10 transition-all duration-300 shadow-sm text-sm font-medium";
     const labelClass = "block text-xs font-bold text-text-tertiary mb-2 uppercase tracking-widest";
-    const btnNextClass = "px-10 py-4 bg-sbs-blue text-white rounded-full font-bold shadow-xl hover:shadow-glow-blue hover:-translate-y-0.5 transition-all duration-300 active:scale-95";
-
-
-
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-        const { name, value } = e.target;
-
-        let finalValue = value;
-
-        if (name === 'contactPhone') {
-            finalValue = formatPhoneNumber(value);
-        }
-
-        if (name === 'operationsStartDate') {
-            finalValue = formatDateMask(value);
-        }
-
-        updateFormData({ [name]: finalValue });
-
-        if (errors[name]) {
-            setErrors(prev => {
-                const newState = {...prev};
-                delete newState[name];
-                return newState;
-            });
-        }
-    };
-
-
-
-    const handleCopyApplicant = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.checked) {
-            updateFormData({
-                contactPerson: `${formData.applicant.names} ${formData.applicant.surnames}`,
-                contactEmail: formData.applicant.email,
-                contactPhone: formData.applicant.phone
-            });
-
-            setErrors(prev => {
-                const next = {...prev};
-                delete next.contactPerson;
-                delete next.contactEmail;
-                delete next.contactPhone;
-                return next;
-            });
-        }
-    };
-
-
-
-    const handleNcfToggle = (value: string) => {
-        const current = formData.ncfTypes || [];
-
-        if (current.includes(value)) {
-            updateFormData({ ncfTypes: current.filter(t => t !== value) });
-        } else {
-            updateFormData({ ncfTypes: [...current, value] });
-        }
-    };
-
-
-
-    const scrollToError = (firstErrorField: string) => {
-        setTimeout(() => {
-            const element = document.querySelector(`[name="${firstErrorField}"]`);
-
-            if (element) {
-                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                (element as HTMLElement).focus();
-            } else {
-                const logoEl = document.getElementById('logo-upload-section');
-                if (firstErrorField === 'logo' && logoEl) {
-                    logoEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }
-            }
-        }, 150);
-    };
-
-
-
-    const validateSection = (section: Section): boolean => {
-        const newErrors: Record<string, string | Record<string,string>> = {};
-        let isValid = true;
-        let firstErrorField = '';
-
-        const setError = (field: string, message: string) => {
-            newErrors[field] = message;
-            isValid = false;
-            if (!firstErrorField) firstErrorField = field;
-        };
-
-        if (section === 'details') {
-            if (formData.hasLogo === 'Sí' && !formData.logoFile) {
-                setError('logo', 'Es obligatorio cargar el archivo de tu logo para continuar.');
-            }
-
-            if (!validateRequired(formData.productsAndServices || '')) setError('productsAndServices', 'Requerido');
-            if (!validateRequired(formData.activityMainDGII || '')) setError('activityMainDGII', 'Requerido');
-            if (!validateRequired(formData.fiscalClosing || '')) setError('fiscalClosing', 'Requerido');
-
-            if (formData.operationsStartDate && !validateDate(formData.operationsStartDate)) {
-                setError('operationsStartDate', 'Formato inválido (DD/MM/AAAA) o fecha irreal.');
-            }
-        }
-
-        if (section === 'location') {
-            if (!validateRequired(formData.contactPerson || '')) setError('contactPerson', 'Requerido');
-
-            if (!validateRequired(formData.contactPhone || '')) setError('contactPhone', 'Requerido');
-            else if (!validatePhoneNumber(formData.contactPhone || '')) setError('contactPhone', 'Número inválido');
-
-            if (!validateRequired(formData.contactEmail || '')) setError('contactEmail', 'Requerido');
-            else if (!validateEmail(formData.contactEmail || '')) setError('contactEmail', 'Email inválido');
-
-            if (!validateRequired(formData.referencePoint || '')) setError('referencePoint', 'Requerido');
-            if (!validateRequired(formData.localType || '')) setError('localType', 'Requerido');
-        }
-
-        if (section === 'powers') {
-            if (!formData.legalSignaturePowers) setError('legalSignaturePowers', 'Requerido');
-            if (!formData.bankPowers) setError('bankPowers', 'Requerido');
-            if (!formData.bankAuthorizedPerson1) setError('bankAuthorizedPerson1', 'Requerido');
-        }
-
-        if (section === 'fiscal') {
-            if (!formData.ncfTypes || formData.ncfTypes.length === 0) setError('ncf', 'Selecciona al menos uno');
-            if (!validateRequired(formData.monthlyNcfVolume || '')) setError('monthlyNcfVolume', 'Requerido');
-            if (!validateRequired(formData.hasEmployees || '')) setError('hasEmployees', 'Requerido');
-        }
-
-        if (section === 'references') {
-            if (!validateRequired(formData.commercialRef1 || '')) setError('commercialRef1', 'Requerido');
-            if (!validateRequired(formData.bankRef1 || '')) setError('bankRef1', 'Requerido');
-        }
-
-        if (!isValid) {
-            setErrors(newErrors);
-            scrollToError(firstErrorField);
-            return false;
-        }
-
-        setErrors({});
-        return isValid;
-    };
-
-
-
-    const toggleSection = (section: Section) => {
-        setActiveSection(section);
-    };
-
-    const nextSection = (current: Section, next: Section) => {
-        if (validateSection(current)) {
-            setActiveSection(next);
-        }
-    };
-
-
-
-    const handleFinalSubmit = async () => {
-        if (isSubmitting) return;
-
-        const sections: Section[] = ['details', 'location', 'powers', 'fiscal', 'references'];
-
-        for (const sec of sections) {
-            if (!validateSection(sec)) {
-                setActiveSection(sec);
-                return;
-            }
-        }
-
-        setIsSubmitting(true);
-        setSubmissionError(null);
-
-        try {
-            const sanitizedFormData = {
-                ...formData,
-                companyName: formData.companyName ? sanitizeInput(formData.companyName) : formData.companyName,
-                socialObject: formData.socialObject ? sanitizeInput(formData.socialObject) : formData.socialObject
-            };
-
-            await saveFullApplication(sanitizedFormData);
-
-            // Google Ads conversion tracking (post-pago completado)
-            const conversionValueByPackage: Record<string, number> = {
-                'Starter Pro': 444,
-                'Essential 360': 667,
-                'Unlimitech': 1033
-            };
-            const valueUsd = conversionValueByPackage[formData.packageName || 'Essential 360'] ?? 667;
-            const transactionId = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
-            if (typeof window !== 'undefined' && typeof (window as Window & { gtag?: (...args: unknown[]) => void }).gtag === 'function') {
-                (window as Window & { gtag: (...args: unknown[]) => void }).gtag('event', 'conversion', {
-                    send_to: 'AW-17948166548/PrakCPafovgbEJSTre5C',
-                    value: valueUsd,
-                    currency: 'USD',
-                    transaction_id: transactionId
-                });
-            }
-
-            onComplete();
-            return;
-        } catch (error) {
-            console.error('Error finalizando expediente', error);
-            const message = error instanceof Error ? error.message : 'Ocurrió un error inesperado.';
-            setSubmissionError(message);
-            window.alert(`No pudimos finalizar tu expediente. Detalle: ${message}`);
-            setIsSubmitting(false);
-        }
-    };
-
-
 
     return (
         <div className="max-w-4xl mx-auto pb-24">
             <div className="mb-12 text-center">
                 <h2 className="text-3xl font-bold text-sbs-blue mb-2">Formulario Maestro</h2>
-                <p className="text-text-secondary text-sm font-light">Completa los detalles finales para la redacción de estatutos y alta en DGII.</p>
+                <p className="text-text-secondary text-sm font-light">Completa los detalles finales para la redacciÃ³n de estatutos y alta en DGII.</p>
             </div>
 
             <div id="section-details">
@@ -338,15 +119,15 @@ const PostPaymentForm: React.FC<PostPaymentFormProps> = ({ formData, updateFormD
                                 <label className={labelClass}>Identidad Visual (Logo)</label>
                                 <select
                                     value={hasLogo}
-                                    onChange={(e) => updateFormData({hasLogo: e.target.value as 'Sí'|'No'})}
+                                    onChange={(e) => updateFormData({hasLogo: e.target.value as 'SÃ­'|'No'})}
                                     className={inputClass}
                                 >
                                     <option value="No">No tengo logo.</option>
-                                    <option value="Sí">Ya tengo logo.</option>
+                                    <option value="SÃ­">Ya tengo logo.</option>
                                 </select>
                             </div>
 
-                            {hasLogo === 'Sí' && (
+                            {hasLogo === 'SÃ­' && (
                                 <div className="animate-fade-in-up" id="logo-upload-section">
                                     <label className={labelClass}>Subir Logo (Obligatorio)</label>
 
@@ -406,7 +187,7 @@ const PostPaymentForm: React.FC<PostPaymentFormProps> = ({ formData, updateFormD
                                             <div className="text-center text-gray-400 group-hover:text-sbs-blue transition-colors pointer-events-none">
                                                 <UploadCloud className="w-8 h-8 mx-auto mb-2" />
                                                 <span className="text-sm font-bold uppercase tracking-wide block">Subir Logo / Arte</span>
-                                                <span className="text-[10px] opacity-70">Haz click o arrastra aquí</span>
+                                                <span className="text-[10px] opacity-70">Haz click o arrastra aquÃ­</span>
                                             </div>
                                         </label>
                                     ) : (
@@ -439,9 +220,9 @@ const PostPaymentForm: React.FC<PostPaymentFormProps> = ({ formData, updateFormD
 
                         <div>
 
-                            <label className={labelClass}>Productos y Servicios (Listado específico)</label>
+                            <label className={labelClass}>Productos y Servicios (Listado especÃ­fico)</label>
 
-                            <textarea name="productsAndServices" value={formData.productsAndServices} onChange={handleChange} rows={3} className={inputClass} placeholder="Ej: Venta de ropa al detalle, consultoría financiera..." />
+                            <textarea name="productsAndServices" value={formData.productsAndServices} onChange={handleChange} rows={3} className={inputClass} placeholder="Ej: Venta de ropa al detalle, consultorÃ­a financiera..." />
 
                             {errors.productsAndServices && <p className="text-red-500 text-xs mt-1 font-bold">{errors.productsAndServices as string}</p>}
 
@@ -453,7 +234,7 @@ const PostPaymentForm: React.FC<PostPaymentFormProps> = ({ formData, updateFormD
 
                             <div>
 
-                                <label className={labelClass}>Actividad Económica Principal (DGII)</label>
+                                <label className={labelClass}>Actividad EconÃ³mica Principal (DGII)</label>
 
                                 <input name="activityMainDGII" value={formData.activityMainDGII} onChange={handleChange} className={inputClass} placeholder="Ej: Venta al por menor" />
 
@@ -463,7 +244,7 @@ const PostPaymentForm: React.FC<PostPaymentFormProps> = ({ formData, updateFormD
 
                             <div>
 
-                                <label className={labelClass}>Actividad Económica Secundaria</label>
+                                <label className={labelClass}>Actividad EconÃ³mica Secundaria</label>
 
                                 <input name="activitySecondaryDGII" value={formData.activitySecondaryDGII} onChange={handleChange} className={inputClass} placeholder="Opcional" />
 
@@ -481,7 +262,7 @@ const PostPaymentForm: React.FC<PostPaymentFormProps> = ({ formData, updateFormD
 
                                 <select name="fiscalClosing" value={formData.fiscalClosing || FISCAL_CLOSING_DATE} onChange={handleChange} className={inputClass}>
 
-                                    <option value="31 de Diciembre">31 Dic (Estándar)</option>
+                                    <option value="31 de Diciembre">31 Dic (EstÃ¡ndar)</option>
 
                                     <option value="31 de Marzo">31 Mar</option>
 
@@ -537,13 +318,13 @@ const PostPaymentForm: React.FC<PostPaymentFormProps> = ({ formData, updateFormD
 
 
 
-            {/* SECCIÓN 2: UBICACIÓN Y CONTACTO */}
+            {/* SECCIÃ“N 2: UBICACIÃ“N Y CONTACTO */}
 
             <AccordionItem 
 
                 section="location" 
 
-                title="Ubicación y Contacto" 
+                title="UbicaciÃ³n y Contacto" 
 
                 number="2"
 
@@ -561,7 +342,7 @@ const PostPaymentForm: React.FC<PostPaymentFormProps> = ({ formData, updateFormD
 
                      <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl flex items-center justify-between">
 
-                         <span className="text-xs font-bold text-blue-800 uppercase tracking-wider">¿Eres la persona de contacto?</span>
+                         <span className="text-xs font-bold text-blue-800 uppercase tracking-wider">Â¿Eres la persona de contacto?</span>
 
                          <label className="flex items-center space-x-2 cursor-pointer">
 
@@ -581,7 +362,7 @@ const PostPaymentForm: React.FC<PostPaymentFormProps> = ({ formData, updateFormD
 
                              <label className={labelClass}>Persona de Contacto</label>
 
-                             <input name="contactPerson" value={formData.contactPerson} onChange={handleChange} className={`${inputClass} ${errors.contactPerson ? 'border-red-300' : ''}`} placeholder="Quien manejará el proceso" />
+                             <input name="contactPerson" value={formData.contactPerson} onChange={handleChange} className={`${inputClass} ${errors.contactPerson ? 'border-red-300' : ''}`} placeholder="Quien manejarÃ¡ el proceso" />
 
                              {errors.contactPerson && <p className="text-red-500 text-xs mt-1 font-bold">{errors.contactPerson as string}</p>}
 
@@ -589,7 +370,7 @@ const PostPaymentForm: React.FC<PostPaymentFormProps> = ({ formData, updateFormD
 
                          <div>
 
-                             <label className={labelClass}>Teléfono Contacto</label>
+                             <label className={labelClass}>TelÃ©fono Contacto</label>
 
                              <input 
 
@@ -629,7 +410,7 @@ const PostPaymentForm: React.FC<PostPaymentFormProps> = ({ formData, updateFormD
 
                          <div>
 
-                             <label className={labelClass}>Página Web</label>
+                             <label className={labelClass}>PÃ¡gina Web</label>
 
                              <input name="website" value={formData.website} onChange={handleChange} className={inputClass} placeholder="Existente o a registrar" />
 
@@ -639,7 +420,7 @@ const PostPaymentForm: React.FC<PostPaymentFormProps> = ({ formData, updateFormD
 
                              <label className={labelClass}>
                                  Tipo de Local
-                                 <Tooltip text="No importa si es una casa o una oficina virtual, esto no limita tu formalización." />
+                                 <Tooltip text="No importa si es una casa o una oficina virtual, esto no limita tu formalizaciÃ³n." />
                              </label>
 
                              <select name="localType" value={formData.localType} onChange={handleChange} className={`${inputClass} ${errors.localType ? 'border-red-300' : ''}`}>
@@ -662,9 +443,9 @@ const PostPaymentForm: React.FC<PostPaymentFormProps> = ({ formData, updateFormD
 
                      <div>
 
-                         <label className={labelClass}>Punto de Referencia (Obligatorio para mensajería)</label>
+                         <label className={labelClass}>Punto de Referencia (Obligatorio para mensajerÃ­a)</label>
 
-                         <input name="referencePoint" value={formData.referencePoint} onChange={handleChange} className={`${inputClass} ${errors.referencePoint ? 'border-red-300' : ''}`} placeholder="Ej: Detrás de la bomba Texaco..." />
+                         <input name="referencePoint" value={formData.referencePoint} onChange={handleChange} className={`${inputClass} ${errors.referencePoint ? 'border-red-300' : ''}`} placeholder="Ej: DetrÃ¡s de la bomba Texaco..." />
 
                          {errors.referencePoint && <p className="text-red-500 text-xs mt-1 font-bold">{errors.referencePoint as string}</p>}
 
@@ -676,7 +457,7 @@ const PostPaymentForm: React.FC<PostPaymentFormProps> = ({ formData, updateFormD
 
                      <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
 
-                         <h4 className="text-xs font-bold text-gray-500 mb-2">Dirección Registrada (Confirmar):</h4>
+                         <h4 className="text-xs font-bold text-gray-500 mb-2">DirecciÃ³n Registrada (Confirmar):</h4>
 
                          <p className="text-sm text-gray-700">{formData.companyStreet} #{formData.companyStreetNumber}, {formData.companySector}, {formData.companyCity}.</p>
 
@@ -698,13 +479,13 @@ const PostPaymentForm: React.FC<PostPaymentFormProps> = ({ formData, updateFormD
 
 
 
-            {/* SECCIÓN 3: PODERES */}
+            {/* SECCIÃ“N 3: PODERES */}
 
             <AccordionItem 
 
                 section="powers" 
 
-                title="Régimen de Poderes y Firmas" 
+                title="RÃ©gimen de Poderes y Firmas" 
 
                 number="3"
 
@@ -725,7 +506,7 @@ const PostPaymentForm: React.FC<PostPaymentFormProps> = ({ formData, updateFormD
                      {formData.companyType === 'EIRL' ? (
                          <div className="space-y-6">
                              <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 text-sm text-amber-800 leading-relaxed">
-                                 Como <strong>E.I.R.L.</strong>, el titular ejerce todos los poderes de firma y representación legal de forma individual. No aplica firma conjunta ni indistinta, ya que la empresa tiene un único dueño.
+                                 Como <strong>E.I.R.L.</strong>, el titular ejerce todos los poderes de firma y representaciÃ³n legal de forma individual. No aplica firma conjunta ni indistinta, ya que la empresa tiene un Ãºnico dueÃ±o.
                              </div>
 
                              <div>
@@ -828,7 +609,7 @@ const PostPaymentForm: React.FC<PostPaymentFormProps> = ({ formData, updateFormD
 
 
 
-             {/* SECCIÓN 4: FISCAL */}
+             {/* SECCIÃ“N 4: FISCAL */}
 
              <AccordionItem 
 
@@ -896,15 +677,15 @@ const PostPaymentForm: React.FC<PostPaymentFormProps> = ({ formData, updateFormD
 
                         <div>
 
-                            <label className={labelClass}>¿Tendrá empleados fijos?</label>
+                            <label className={labelClass}>Â¿TendrÃ¡ empleados fijos?</label>
 
                              <div className="flex space-x-6 mt-3">
 
                                  <label className="flex items-center space-x-2">
 
-                                     <input type="radio" name="hasEmployees" value="Sí" checked={formData.hasEmployees === 'Sí'} onChange={handleChange} />
+                                     <input type="radio" name="hasEmployees" value="SÃ­" checked={formData.hasEmployees === 'SÃ­'} onChange={handleChange} />
 
-                                     <span className="text-sm">Sí</span>
+                                     <span className="text-sm">SÃ­</span>
 
                                  </label>
 
@@ -938,7 +719,7 @@ const PostPaymentForm: React.FC<PostPaymentFormProps> = ({ formData, updateFormD
 
 
 
-             {/* SECCIÓN 5: REFERENCIAS */}
+             {/* SECCIÃ“N 5: REFERENCIAS */}
 
              <AccordionItem 
 
@@ -974,7 +755,7 @@ const PostPaymentForm: React.FC<PostPaymentFormProps> = ({ formData, updateFormD
 
                                 Referencia Comercial 1
 
-                                <Tooltip text="Empresa o proveedor que pueda dar fe de su actividad comercial previa o reputación." />
+                                <Tooltip text="Empresa o proveedor que pueda dar fe de su actividad comercial previa o reputaciÃ³n." />
 
                             </label>
 

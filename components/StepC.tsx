@@ -1,8 +1,8 @@
 
-import React, { useMemo, useState } from 'react';
+import React from 'react';
 import { FormData } from '../types';
-import { validateCedula, validateRequired, formatCedula } from '../core/utils/validation';
 import { Users, Briefcase, ChevronDown, Clock } from 'lucide-react';
+import { useStepCForm } from '../core/hooks/useStepCForm';
 
 interface StepCProps {
     formData: FormData;
@@ -12,59 +12,17 @@ interface StepCProps {
 }
 
 const StepC: React.FC<StepCProps> = ({ formData, updateFormData, nextStep, prevStep }) => {
-    const [errors, setErrors] = useState<Record<string, string>>({});
+    const {
+        errors,
+        isFormValid,
+        handleManagerTypeChange,
+        handleSocioManagerChange,
+        handleThirdPartyManagerChange,
+        handleThirdPartyBlur,
+    } = useStepCForm(formData, updateFormData);
 
-    // --- STYLES PREMIUM REFINED ---
     const inputClass = "w-full px-5 py-4 rounded-xl bg-white border border-gray-200 text-text-primary placeholder-gray-400 focus:outline-none focus:border-sbs-blue focus:ring-4 focus:ring-sbs-blue/10 transition-all duration-300 shadow-sm text-base font-medium disabled:bg-gray-50";
     const labelClass = "block text-xs font-bold text-text-secondary mb-2 uppercase tracking-widest";
-    
-    const handleManagerTypeChange = (type: 'Socio' | 'Tercero') => {
-        updateFormData({ manager: { type, name: '', idNumber: '', nationality: 'República Dominicana' } });
-        setErrors({});
-    };
-
-    const handleSocioManagerChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const selectedPartnerName = e.target.value;
-        const partner = formData.partners.find(p => `${p.names} ${p.surnames}` === selectedPartnerName);
-        if (partner) {
-            updateFormData({ manager: { ...formData.manager, name: `${partner.names} ${partner.surnames}`, idNumber: partner.idNumber } });
-        }
-    };
-    
-     const handleThirdPartyManagerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const { name, value } = e.target;
-        
-        let finalValue = value;
-        if (name === 'idNumber') {
-            finalValue = formatCedula(value);
-        }
-
-        updateFormData({ manager: { ...formData.manager, [name]: finalValue } });
-        
-        if (errors[name]) {
-            setErrors(prev => ({...prev, [name]: ''}))
-        }
-    };
-
-    const handleThirdPartyBlur = (e: React.FocusEvent<HTMLInputElement>) => {
-        const { name, value } = e.target;
-        let error = '';
-        if (!validateRequired(value)) {
-            error = 'Este campo es requerido.';
-        } else if (name === 'idNumber' && !validateCedula(value)) {
-            error = 'Formato de cédula inválido.';
-        }
-        setErrors(prev => ({...prev, [name]: error}));
-    }
-
-    const isFormValid = useMemo(() => {
-        const { manager } = formData;
-        if (!validateRequired(manager.name)) return false;
-        if (!validateRequired(manager.idNumber)) return false;
-        if (!validateCedula(manager.idNumber)) return false;
-        
-        return true;
-    }, [formData.manager]);
 
     return (
         <div className="animate-fade-in-up">

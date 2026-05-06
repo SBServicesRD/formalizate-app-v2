@@ -1,9 +1,10 @@
-
-import React, { useMemo, useState, useEffect } from 'react';
-import { FormData, Partner, MaritalStatus } from '../types';
-import { SHARE_VALUE, PROVINCES, MUNICIPALITIES, COUNTRIES, INTERNATIONAL_REGIONS, ALLOWED_FILE_TYPES, PACKAGES, POSTAL_CODE_CONFIG } from '../constants';
-import { distributeShares, calculateICCTax, formatCurrency } from '../core/utils/calculations';
-import { validateCedula, validateRequired, formatCedula, formatPhoneNumber, validateEmail, sanitizeInput, validatePhoneNumber, formatDateMask, validateDate, validateBirthDate } from '../core/utils/validation';
+﻿
+import React from 'react';
+import { FormData, MaritalStatus } from '../types';
+import { PROVINCES, MUNICIPALITIES, COUNTRIES, INTERNATIONAL_REGIONS, ALLOWED_FILE_TYPES, PACKAGES, POSTAL_CODE_CONFIG } from '../constants';
+import { calculateICCTax, formatCurrency } from '../core/utils/calculations';
+import { formatDateMask } from '../core/utils/validation';
+import { useStepBForm } from '../core/hooks/useStepBForm';
 import { HelpCircle, Check, Trash2, ChevronDown, Image, IdCard, FileSignature } from 'lucide-react';
 
 interface StepBProps {
@@ -51,444 +52,25 @@ const UploadProgress = ({ progress }: { progress: number }) => (
 );
 
 const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevStep }) => {
-    const [touched, setTouched] = useState<Record<string, boolean>>({});
-    const [errors, setErrors] = useState<Record<string, Record<string, string>>>({});
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
+    const {
+        touched, errors, isSubmitting, uploadProgress,
+        isExternalManager, totalPercentage, isError,
+        handleFileUpload, toggleManagerMode, handleCapitalChange,
+        handlePartnerChange, toggleRole, handleBlur, validateSingleField,
+        addPartner, removePartner, handleNext, handleDragOver, handleDrop,
+    } = useStepBForm(formData, updateFormData, nextStep);
 
-    // Determine Administration Mode based on formData (Default to 'Socio' if unset)
-    const isExternalManager = formData.manager.type === 'Tercero';
-
-    // EIRL: Forzar porcentaje 100% y rol Gerente en el único titular
-    useEffect(() => {
-        if (formData.companyType === 'EIRL' && formData.partners.length > 0) {
-            const updatedPartners = formData.partners.map((p, idx) => {
-                const roles = p.roles || ['Socio'];
-                const updatedRoles = roles.includes('Gerente') ? roles : [...roles, 'Gerente'];
-                return idx === 0
-                    ? { ...p, percentage: 100, shares: Math.floor(formData.socialCapital / SHARE_VALUE), roles: updatedRoles }
-                    : p;
-            });
-            if (JSON.stringify(updatedPartners) !== JSON.stringify(formData.partners)) {
-                updateFormData({ partners: updatedPartners });
-            }
-        }
-    }, [formData.companyType, formData.socialCapital]);
-
-    // EIRL sin gerente externo: auto-seleccionar al titular como firma digital
-    useEffect(() => {
-        const isExt = formData.manager.type === 'Tercero';
-        if (formData.companyType === 'EIRL' && formData.partners.length > 0 && !formData.digitalSignatureHolderId && !isExt) {
-            updateFormData({ digitalSignatureHolderId: formData.partners[0].id });
-        }
-    }, [formData.companyType, formData.partners, formData.manager.type]);
-
-    // --- STYLES PREMIUM REFINED ---
     const inputClass = "w-full px-4 py-3 rounded-xl bg-white border border-gray-200 text-text-primary placeholder-gray-400 focus:outline-none focus:border-sbs-blue focus:ring-4 focus:ring-sbs-blue/10 transition-all duration-300 shadow-sm text-base font-medium";
-    // --- END STYLES ---
 
-    // Tax Calculation Logic for "The Investor" Scenario
     const currentPackage = formData.packageName ? PACKAGES[formData.packageName] : PACKAGES['Essential 360'];
     const estimatedTax = calculateICCTax(formData.socialCapital);
     const estimatedTotal = currentPackage.price + estimatedTax;
-
-    // --- QA: FILE UPLOAD SIMULATION ---
-    const handleFileUpload = (key: string, file: File, callback: (f: File) => void) => {
-        // 🔥 FIX CRÍTICO: Guardar archivo INMEDIATAMENTE (antes de la animación)
-        callback(file);
-        
-        let progress = 0;
-        setUploadProgress(prev => ({ ...prev, [key]: 0 }));
-        
-        const interval = setInterval(() => {
-            progress += Math.random() * 20;
-            if (progress >= 100) {
-                progress = 100;
-                clearInterval(interval);
-                setUploadProgress(prev => {
-                    const next = { ...prev };
-                    delete next[key];
-                    return next;
-                });
-            } else {
-                setUploadProgress(prev => ({ ...prev, [key]: progress }));
-            }
-        }, 200);
-    };
-
-    const toggleManagerMode = (mode: 'Socio' | 'Tercero') => {
-        updateFormData({ 
-            manager: { 
-                ...formData.manager, 
-                type: mode 
-            } 
-        });
-    };
-
-    const handleCapitalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const valStr = e.target.value.replace(/[^0-9]/g, ''); // Enforce numbers only
-        
-        // Prevent empty string breaking logic, default to 0 visual but keep clean
-        if (valStr === '') {
-            updateFormData({ socialCapital: 0 }); 
-            return;
-        }
-
-        let value = parseInt(valStr, 10);
-        if (isNaN(value)) value = 0;
-        
-        // FINANCIAL SAFETY: Strictly prevent negative numbers
-        value = Math.max(0, value);
-        
-        updateFormData({ socialCapital: value });
-        
-        // Recalcular cuotas de todos los socios basado en %
-        if (value > 0) {
-            const updatedPartners = formData.partners.map(p => ({
-                ...p,
-                shares: distributeShares(value, p.percentage)
-            }));
-            updateFormData({ partners: updatedPartners });
-        }
-    };
-
-    const handlePartnerChange = (id: number, field: keyof Partner, value: any) => {
-        const updatedPartners = formData.partners.map(p => {
-            if (p.id === id) {
-                let finalValue = value;
-
-                // Format Phone Number
-                if (field === 'mobilePhone') {
-                    finalValue = formatPhoneNumber(value);
-                }
-
-                const updatedPartner = { ...p, [field]: finalValue };
-
-                // Lógica de Nacionalidad: Dominicano = Cédula, Extranjero = Pasaporte
-                if (field === 'nationality') {
-                     // Reset Province/City if nationality changes to ensure correct dropdowns
-                     updatedPartner.addressProvince = '';
-                     updatedPartner.addressCity = '';
-
-                     if (value === 'República Dominicana') {
-                         updatedPartner.documentType = 'Cédula';
-                         updatedPartner.idNumber = ''; 
-                     } else {
-                         updatedPartner.documentType = 'Pasaporte';
-                         updatedPartner.idNumber = '';
-                     }
-                }
-                
-                // Aplicar máscara SOLO si es Cédula
-                if (field === 'idNumber' && updatedPartner.documentType === 'Cédula') {
-                     finalValue = formatCedula(value);
-                     updatedPartner.idNumber = finalValue;
-                }
-
-                if (field === 'maritalStatus' && value === 'Soltero(a)') {
-                    delete updatedPartner.matrimonialRegime;
-                }
-
-                if (field === 'percentage') {
-                    let pct = parseFloat(value);
-                    if (isNaN(pct)) pct = 0;
-                    if(pct < 0) pct = 0; // Prevent negative percentage
-                    if(pct > 100) pct = 100;
-                    updatedPartner.percentage = pct;
-                    updatedPartner.shares = distributeShares(formData.socialCapital, pct);
-                }
-                return updatedPartner;
-            }
-            return p;
-        });
-        
-        updateFormData({ partners: updatedPartners });
-
-        // Clear error on change if it exists
-        if (errors[id] && errors[id][field]) {
-            setErrors(prev => {
-                const newErrors = { ...prev };
-                const partnerErrors = { ...newErrors[id] };
-                delete partnerErrors[field];
-                newErrors[id] = partnerErrors;
-                return newErrors;
-            });
-        }
-    };
-
-    const toggleRole = (id: number, role: string) => {
-        const partner = formData.partners.find(p => p.id === id);
-        if (!partner) return;
-        
-        let newRoles = [...(partner.roles || [])];
-        
-        // Asegurar que 'Socio' siempre esté en la lista base si por alguna razón no está
-        if (!newRoles.includes('Socio')) newRoles.push('Socio');
-
-        if (newRoles.includes(role)) {
-            // No permitir deseleccionar 'Socio' bajo ninguna circunstancia
-            if (role === 'Socio') return;
-            newRoles = newRoles.filter(r => r !== role);
-        } else {
-            newRoles.push(role);
-        }
-        
-        handlePartnerChange(id, 'roles', newRoles);
-    };
-
-    const handleBlur = (partnerId: number, field: string, value: string) => {
-        // QA: Sanitize on Blur
-        let cleanValue = value;
-        if (field !== 'email') { 
-             cleanValue = sanitizeInput(value);
-             if (cleanValue !== value) {
-                 handlePartnerChange(partnerId, field as keyof Partner, cleanValue);
-             }
-        }
-
-        setTouched(prev => ({ ...prev, [`${partnerId}_${field}`]: true }));
-        validateSingleField(partnerId, field, cleanValue);
-    };
-
-    const validateSingleField = (partnerId: number, field: string, value: string) => {
-        const partner = formData.partners.find(p => p.id === partnerId);
-        if (!partner) return;
-
-        const newErrors = { ...errors };
-        const partnerErrors = newErrors[partnerId] || {};
-        let error = '';
-
-        if (field === 'names' && !validateRequired(value)) error = "Requerido";
-        if (field === 'surnames' && !validateRequired(value)) error = "Requerido";
-        if (field === 'nationality' && !validateRequired(value)) error = "Requerido";
-        if (field === 'birthDate') {
-            if (!validateRequired(value)) error = "Fecha requerida";
-            else if (!validateBirthDate(value)) error = "Fecha inválida o menor de 18 años";
-        }
-        if (field === 'profession' && !validateRequired(value)) error = "Requerido";
-        
-        if (field === 'idNumber') {
-            if (!validateRequired(value)) error = "Requerido";
-            else if (partner.documentType === 'Cédula' && !validateCedula(value)) error = "Formato inválido";
-            // Para Pasaporte solo validamos que no esté vacío
-        }
-
-        if (field === 'addressStreet' && !validateRequired(value)) error = "Calle requerida";
-        if (field === 'addressProvince' && !validateRequired(value)) error = "Provincia/Estado requerido";
-        
-        // Only require city if we are in DR (where we have dropdowns) or if it's a free text input that is empty
-        if (field === 'addressCity' && !validateRequired(value)) error = "Ciudad requerida";
-        
-        if (field === 'mobilePhone') {
-            if (!validateRequired(value)) error = "Requerido";
-            else if (!validatePhoneNumber(value)) error = "Número inválido";
-        }
-
-        if (field === 'email') {
-            if (!validateRequired(value)) error = "Email requerido";
-            else if (!validateEmail(value)) error = "Email inválido";
-        }
-
-        if (error) {
-            partnerErrors[field] = error;
-        } else {
-            delete partnerErrors[field];
-        }
-        
-        newErrors[partnerId] = partnerErrors;
-        setErrors(newErrors);
-    };
-
-    const addPartner = () => {
-        // DATA INTEGRITY: Use random + timestamp to absolutely prevent ID collision on fast double-clicks
-        const newPartner: Partner = {
-            id: Date.now() + Math.floor(Math.random() * 1000),
-            names: '', surnames: '', nationality: 'República Dominicana',
-            birthDate: '', // Fecha de Nacimiento obligatoria
-            maritalStatus: 'Soltero(a)', profession: '', documentType: 'Cédula', idNumber: '',
-            // Initialize new partner with empty ID files
-            idFront: null, idBack: null,
-            residenceCountry: 'República Dominicana', // País de residencia (determina formato dirección)
-            addressStreet: '', addressNumber: '', addressSuite: '', addressSector: '', addressCity: '', addressProvince: '',
-            postalCode: '', // Código postal para direcciones internacionales
-            email: '', mobilePhone: '', roles: formData.companyType === 'EIRL' ? ['Socio', 'Gerente'] : ['Socio'], percentage: 0, shares: 0,
-        };
-        updateFormData({ partners: [...formData.partners, newPartner] });
-    };
-
-    const removePartner = (id: number) => {
-        if (formData.partners.length > 1) {
-            updateFormData({ partners: formData.partners.filter(p => p.id !== id) });
-        }
-    };
-    
-    const validateAllPartners = () => {
-        const newErrors: Record<string, Record<string, string>> = {};
-        let allValid = true;
-
-        formData.partners.forEach(p => {
-            const pErr: Record<string, string> = {};
-            if (!validateRequired(p.names)) pErr.names = "Requerido";
-            if (!validateRequired(p.surnames)) pErr.surnames = "Requerido";
-            if (!validateRequired(p.nationality)) pErr.nationality = "Requerido";
-            if (!validateRequired(p.profession)) pErr.profession = "Requerido";
-            
-            if (!validateRequired(p.mobilePhone)) pErr.mobilePhone = "Requerido";
-            else if (!validatePhoneNumber(p.mobilePhone)) pErr.mobilePhone = "Inválido";
-            
-            if (!validateRequired(p.email)) pErr.email = "Requerido";
-            else if (!validateEmail(p.email)) pErr.email = "Inválido";
-            
-            if (!validateRequired(p.idNumber)) pErr.idNumber = "Requerido";
-            else if (p.documentType === 'Cédula' && !validateCedula(p.idNumber)) pErr.idNumber = "Inválido";
-            
-            if (!validateRequired(p.birthDate)) pErr.birthDate = "Fecha requerida";
-            else if (!validateBirthDate(p.birthDate)) pErr.birthDate = "Fecha inválida o menor de 18 años";
-            
-            if (!validateRequired(p.addressStreet)) pErr.addressStreet = "Requerido";
-            if (!validateRequired(p.addressProvince)) pErr.addressProvince = "Requerido";
-            if (!validateRequired(p.addressCity)) pErr.addressCity = "Requerido";
-            
-            // Check for Files
-            if (!p.idFront) pErr.idFront = "Foto Frontal Requerida";
-            
-            // BACK ID ONLY REQUIRED IF NOT PASSPORT
-            if (p.documentType !== 'Pasaporte' && !p.idBack) {
-                pErr.idBack = "Foto Dorsal Requerida";
-            }
-
-            if(Object.keys(pErr).length > 0) {
-                newErrors[p.id] = pErr;
-                allValid = false;
-            }
-        });
-
-        setErrors(newErrors);
-        
-        const allTouched: Record<string, boolean> = {};
-        formData.partners.forEach(p => {
-             ['names', 'surnames', 'nationality', 'birthDate', 'profession', 'mobilePhone', 'email', 'idNumber', 'addressStreet', 'addressProvince', 'addressCity'].forEach(f => allTouched[`${p.id}_${f}`] = true);
-        });
-        setTouched(allTouched);
-
-        return allValid;
-    }
-
-    const totalPercentage = useMemo(() => formData.partners.reduce((sum, p) => sum + (p.percentage || 0), 0), [formData.partners]);
-
-    const scrollToError = () => {
-        setTimeout(() => {
-            const firstErrorElement = document.querySelector('.border-red-300');
-            if (firstErrorElement) {
-                firstErrorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            } else {
-                const fileError = document.querySelector('.text-red-500');
-                if(fileError) fileError.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
-        }, 100);
-    };
-
-    const handleNext = () => {
-        if (isSubmitting) return;
-        setIsSubmitting(true);
-
-        // Validación Legal 1: Capital Mínimo
-        if (formData.socialCapital < 1000) {
-            alert("El capital social debe ser mayor a RD$ 1,000.");
-            setIsSubmitting(false);
-            return;
-        }
-
-        // Validación Legal 2: Socios según tipo de empresa
-        if (formData.companyType === 'SRL' && formData.partners.length < 2) {
-            alert("Una S.R.L. requiere un mínimo de 2 socios obligatorios. Por favor agrega un segundo socio.");
-            setIsSubmitting(false);
-            return;
-        }
-        if (formData.companyType === 'EIRL' && formData.partners.length !== 1) {
-            alert("Una E.I.R.L. debe tener exactamente 1 titular. Por favor verifica que haya únicamente un socio.");
-            setIsSubmitting(false);
-            return;
-        }
-
-        // Validación Legal 3: Integridad de IDs
-        const idNumbers = formData.partners.map(p => p.idNumber.trim());
-        const uniqueIdNumbers = new Set(idNumbers);
-        if (uniqueIdNumbers.size !== idNumbers.length) {
-            alert("Existen socios con la misma cédula/pasaporte. Por favor verifica que no haya duplicados.");
-            setIsSubmitting(false);
-            return;
-        }
-
-        // Validación Legal 4: Integridad Porcentual
-        if (Math.abs(totalPercentage - 100) > 0.1) {
-             alert(`Los porcentajes deben sumar 100%. Actual: ${totalPercentage}%`);
-             setIsSubmitting(false);
-             return;
-        }
-
-        // Validación Legal 5: Gerente Designado (Solo si no es Gerente Externo)
-        if (!isExternalManager) {
-            const hasManager = formData.partners.some(p => p.roles.includes('Gerente'));
-            if (!hasManager) {
-                alert("Si la administración es por socios, debes seleccionar al menos uno como 'Gerente'.");
-                setIsSubmitting(false);
-                return;
-            }
-        }
-
-        // Validación Legal 6: Datos del Gerente Externo (cuando aplique)
-        if (isExternalManager) {
-            if (!formData.manager.name || formData.manager.name.trim() === '') {
-                alert("Debes completar el nombre del Gerente Externo.");
-                setIsSubmitting(false);
-                return;
-            }
-            if (!formData.manager.idNumber || formData.manager.idNumber.trim() === '') {
-                alert("Debes completar el documento de identidad del Gerente Externo.");
-                setIsSubmitting(false);
-                return;
-            }
-        }
-
-        // Validación Legal 7: Titular de Firma Digital
-        if (!formData.digitalSignatureHolderId) {
-            alert(formData.companyType === 'EIRL' ? "Debes seleccionar un titular como Titular de la Firma Digital." : "Debes seleccionar un socio como Titular de la Firma Digital.");
-            setIsSubmitting(false);
-            return;
-        }
-        
-        if (validateAllPartners()) {
-            nextStep();
-        } else {
-            scrollToError();
-        }
-        
-        setTimeout(() => setIsSubmitting(false), 500);
-    }
-
-    const isError = (id: number, field: string) => touched[`${id}_${field}`] && errors[id]?.[field];
-
-    // --- DRAG AND DROP HANDLERS ---
-    const handleDragOver = (e: React.DragEvent<HTMLLabelElement>) => {
-        e.preventDefault();
-        e.stopPropagation();
-    };
-
-    const handleDrop = (e: React.DragEvent<HTMLLabelElement>, partnerId: number, field: 'idFront' | 'idBack', callback: (file: File) => void) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const uploadKey = `${partnerId}_${field}`;
-        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-            handleFileUpload(uploadKey, e.dataTransfer.files[0], callback);
-        }
-    };
 
     return (
         <div className="animate-fade-in-up">
             <h2 className="text-2xl font-bold text-sbs-blue mb-6">{formData.companyType === 'EIRL' ? 'Paso 2: Titular y Capital' : 'Paso 2: Socios y Capital'}</h2>
             
-            {/* --- AVISO DEPÓSITO BANCARIO PARA EIRL --- */}
+            {/* --- AVISO DEPÃ“SITO BANCARIO PARA EIRL --- */}
             {formData.companyType === 'EIRL' && (
                 <div className="bg-blue-50 border border-blue-100 rounded-2xl p-6 mb-8 flex items-start gap-4">
                     <div className="text-sbs-blue flex-shrink-0 mt-1">
@@ -499,7 +81,7 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                     <div>
                         <p className="text-sm font-bold text-sbs-blue mb-2">Sobre el Capital Social en la E.I.R.L.</p>
                         <p className="text-xs text-gray-600 leading-relaxed">
-                            El capital social se deposita <strong>a nombre de la sociedad en formación</strong> en una cuenta bancaria designada para ese fin (Art. 455 Ley 479-08). El banco emite una certificación del depósito. Una vez completada la constitución y obtengas el Registro Mercantil, presentas ese documento al banco y este libera los fondos. No existe capital mínimo legal; deberás depositar el 100% del monto declarado.
+                            El capital social se deposita <strong>a nombre de la sociedad en formaciÃ³n</strong> en una cuenta bancaria designada para ese fin (Art. 455 Ley 479-08). El banco emite una certificaciÃ³n del depÃ³sito. Una vez completada la constituciÃ³n y obtengas el Registro Mercantil, presentas ese documento al banco y este libera los fondos. No existe capital mÃ­nimo legal; deberÃ¡s depositar el 100% del monto declarado.
                         </p>
                     </div>
                 </div>
@@ -510,9 +92,9 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                 <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
                     <div>
                         <label className="block text-xs font-bold text-text-tertiary uppercase tracking-widest mb-1">
-                            Modalidad de Administración
+                            Modalidad de AdministraciÃ³n
                         </label>
-                        <p className="text-sm text-gray-500">¿Quién gestionará el día a día de la empresa?</p>
+                        <p className="text-sm text-gray-500">Â¿QuiÃ©n gestionarÃ¡ el dÃ­a a dÃ­a de la empresa?</p>
                     </div>
                     <div className="flex bg-gray-100 p-1 rounded-xl">
                         <button
@@ -532,7 +114,7 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                     {isExternalManager && (
                     <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-100 flex items-start text-xs text-blue-800">
                         <HelpCircle className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
-                        <span>Has seleccionado <strong>Gerente Externo</strong>. Completa sus datos a continuación. {formData.companyType === 'EIRL' ? 'El titular seguirá siendo propietario de la empresa.' : 'Opcionalmente, también puedes designar socios con rol de "Gerente" para una administración mixta.'}</span>
+                        <span>Has seleccionado <strong>Gerente Externo</strong>. Completa sus datos a continuaciÃ³n. {formData.companyType === 'EIRL' ? 'El titular seguirÃ¡ siendo propietario de la empresa.' : 'Opcionalmente, tambiÃ©n puedes designar socios con rol de "Gerente" para una administraciÃ³n mixta.'}</span>
                     </div>
                 )}
 
@@ -559,20 +141,20 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                             </div>
                             <div>
                                 <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1 tracking-wider">
-                                    {(formData.manager.nationality || 'República Dominicana') === 'República Dominicana' ? 'Cédula' : 'Pasaporte'} <span className="text-sbs-red">*</span>
+                                    {(formData.manager.nationality || 'RepÃºblica Dominicana') === 'RepÃºblica Dominicana' ? 'CÃ©dula' : 'Pasaporte'} <span className="text-sbs-red">*</span>
                                 </label>
                                 <input 
-                                    placeholder={(formData.manager.nationality || 'República Dominicana') === 'República Dominicana' ? 'XXX-XXXXXXX-X' : 'Número de Pasaporte'} 
+                                    placeholder={(formData.manager.nationality || 'RepÃºblica Dominicana') === 'RepÃºblica Dominicana' ? 'XXX-XXXXXXX-X' : 'NÃºmero de Pasaporte'} 
                                     value={formData.manager.idNumber} 
                                     onChange={e => {
-                                        const isDominican = (formData.manager.nationality || 'República Dominicana') === 'República Dominicana';
+                                        const isDominican = (formData.manager.nationality || 'RepÃºblica Dominicana') === 'RepÃºblica Dominicana';
                                         const value = isDominican ? formatCedula(e.target.value) : e.target.value;
                                         updateFormData({ 
                                             manager: { ...formData.manager, idNumber: value } 
                                         });
                                     }}
                                     className={`${inputClass} font-mono`}
-                                    maxLength={(formData.manager.nationality || 'República Dominicana') === 'República Dominicana' ? 13 : 20}
+                                    maxLength={(formData.manager.nationality || 'RepÃºblica Dominicana') === 'RepÃºblica Dominicana' ? 13 : 20}
                                 />
                             </div>
                             <div>
@@ -580,7 +162,7 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                                     Nacionalidad <span className="text-sbs-red">*</span>
                                 </label>
                                 <select 
-                                    value={formData.manager.nationality || 'República Dominicana'} 
+                                    value={formData.manager.nationality || 'RepÃºblica Dominicana'} 
                                     onChange={e => updateFormData({ 
                                         manager: { ...formData.manager, nationality: e.target.value } 
                                     })}
@@ -609,8 +191,8 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                 </h3>
                 <p className="text-sm text-gray-600 mb-4 relative z-10">
                     {formData.companyType === 'EIRL' 
-                        ? "Define el monto a aportar. No hay mínimo legal, pero deberás depositar el total en el banco."
-                        : "Define el monto total a aportar. (Mínimo sugerido RD$ 100,000 — solo se paga 1% de impuesto sobre el excedente)"
+                        ? "Define el monto a aportar. No hay mÃ­nimo legal, pero deberÃ¡s depositar el total en el banco."
+                        : "Define el monto total a aportar. (MÃ­nimo sugerido RD$ 100,000 â€” solo se paga 1% de impuesto sobre el excedente)"
                     }
                 </p>
                 
@@ -631,7 +213,7 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                 {estimatedTax > 0 && (
                     <div className="mt-4 p-4 bg-white/60 rounded-xl border border-blue-100 backdrop-blur-sm animate-fade-in-up">
                         <div className="flex justify-between items-center text-xs text-gray-500 mb-1">
-                            <span>Impuesto Constitución (1% excedente 100k):</span>
+                            <span>Impuesto ConstituciÃ³n (1% excedente 100k):</span>
                             <span className="font-bold text-sbs-red">+ {formatCurrency(estimatedTax)}</span>
                         </div>
                         <div className="flex justify-between items-center text-xs font-bold text-sbs-blue pt-2 border-t border-blue-100">
@@ -643,12 +225,12 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                 {/* ------------------------------- */}
             </div>
 
-            {/* Duración de la Gerencia */}
+            {/* DuraciÃ³n de la Gerencia */}
             <div className="mb-8 p-6 bg-white border border-premium-border rounded-2xl shadow-sm">
                 <div className="flex justify-between items-center mb-2">
                     <label className="text-xs font-bold text-text-tertiary uppercase tracking-widest flex items-center">
-                        Duración de la Gerencia
-                        <Tooltip text="Tiempo de vigencia del Consejo de Gerencia antes de requerir ratificación." />
+                        DuraciÃ³n de la Gerencia
+                        <Tooltip text="Tiempo de vigencia del Consejo de Gerencia antes de requerir ratificaciÃ³n." />
                     </label>
                 </div>
                     <div className="relative">
@@ -659,29 +241,29 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                         className={inputClass}
                     >
                         {Array.from({ length: 6 }, (_, i) => i + 1).map(year => (
-                            <option key={year} value={year}>{year} {year === 1 ? 'Año' : 'Años'}</option>
+                            <option key={year} value={year}>{year} {year === 1 ? 'AÃ±o' : 'AÃ±os'}</option>
                         ))}
                     </select>
                     <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-sbs-blue">
                         <ChevronDown className="w-4 h-4" />
                     </div>
                 </div>
-                <p className="text-xs text-gray-400 mt-2">Recomendado: 6 años para evitar renovaciones frecuentes.</p>
+                <p className="text-xs text-gray-400 mt-2">Recomendado: 6 aÃ±os para evitar renovaciones frecuentes.</p>
             </div>
 
-            <h3 className="font-bold text-lg text-sbs-blue mb-4 flex items-center">{formData.companyType === 'EIRL' ? 'Información del Titular' : 'Estructura de Socios'} <span className="ml-2 text-xs bg-blue-100 text-sbs-blue px-2 py-1 rounded-full">{formData.partners.length} {formData.companyType === 'EIRL' ? 'Persona' : 'Personas'}</span></h3>
+            <h3 className="font-bold text-lg text-sbs-blue mb-4 flex items-center">{formData.companyType === 'EIRL' ? 'InformaciÃ³n del Titular' : 'Estructura de Socios'} <span className="ml-2 text-xs bg-blue-100 text-sbs-blue px-2 py-1 rounded-full">{formData.partners.length} {formData.companyType === 'EIRL' ? 'Persona' : 'Personas'}</span></h3>
             
             {formData.partners.map((partner, i) => {
-                 // International Address Logic - Basado en PAÍS DE RESIDENCIA, no nacionalidad
-                 const residenceCountry = partner.residenceCountry || 'República Dominicana';
-                 const isDominicanResident = residenceCountry === 'República Dominicana';
+                 // International Address Logic - Basado en PAÃS DE RESIDENCIA, no nacionalidad
+                 const residenceCountry = partner.residenceCountry || 'RepÃºblica Dominicana';
+                 const isDominicanResident = residenceCountry === 'RepÃºblica Dominicana';
                  const hasSpecialRegions = INTERNATIONAL_REGIONS[residenceCountry] !== undefined;
                  const regionOptions = hasSpecialRegions ? INTERNATIONAL_REGIONS[residenceCountry] : [];
                  
                  const availableMunicipalities = isDominicanResident && partner.addressProvince ? MUNICIPALITIES[partner.addressProvince] || [] : [];
                  
                  const partnerRoles = partner.roles || ['Socio'];
-                 const isForeigner = partner.nationality !== 'República Dominicana';
+                 const isForeigner = partner.nationality !== 'RepÃºblica Dominicana';
                  const isPassport = partner.documentType === 'Pasaporte';
 
                  return (
@@ -732,7 +314,7 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                             <select value={partner.maritalStatus} onChange={e => handlePartnerChange(partner.id, 'maritalStatus', e.target.value as MaritalStatus)} className={inputClass}>
                                 <option value="Soltero(a)">Soltero(a)</option>
                                 <option value="Casado(a)">Casado(a)</option>
-                                <option value="Unión Libre">Unión Libre</option>
+                                <option value="UniÃ³n Libre">UniÃ³n Libre</option>
                             </select>
                         </div>
                         <div>
@@ -755,7 +337,7 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                             {isError(partner.id, 'birthDate') && <p className="text-red-500 text-xs mt-1">{errors[partner.id]['birthDate']}</p>}
                         </div>
                         <div>
-                            <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1 tracking-wider">Profesión/Ocupación</label>
+                            <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1 tracking-wider">ProfesiÃ³n/OcupaciÃ³n</label>
                             <input 
                                 placeholder="Ej: Ingeniero" 
                                 value={partner.profession} 
@@ -766,10 +348,10 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                         </div>
                         <div>
                             <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1 tracking-wider">
-                                {partner.documentType} <Tooltip text={isForeigner ? "Número de Pasaporte" : "Formato: XXX-XXXXXXX-X"} />
+                                {partner.documentType} <Tooltip text={isForeigner ? "NÃºmero de Pasaporte" : "Formato: XXX-XXXXXXX-X"} />
                             </label>
                             <input 
-                                placeholder={isForeigner ? "Número Pasaporte" : "XXX-XXXXXXX-X"} 
+                                placeholder={isForeigner ? "NÃºmero Pasaporte" : "XXX-XXXXXXX-X"} 
                                 value={partner.idNumber} 
                                 onChange={e => handlePartnerChange(partner.id, 'idNumber', e.target.value)} 
                                 onBlur={(e) => handleBlur(partner.id, 'idNumber', e.target.value)}
@@ -782,7 +364,7 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                         
                         {/* Contact Info */}
                          <div>
-                            <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1 tracking-wider">Teléfono Móvil</label>
+                            <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1 tracking-wider">TelÃ©fono MÃ³vil</label>
                             <input 
                                 placeholder="+1 (809) 000-0000" 
                                 value={partner.mobilePhone} 
@@ -814,9 +396,9 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                                     <IdCard className="w-4 h-4" />
                                 </div>
                                 <div>
-                                    <label className="text-xs font-bold text-text-secondary uppercase tracking-widest block">Identificación Oficial</label>
+                                    <label className="text-xs font-bold text-text-secondary uppercase tracking-widest block">IdentificaciÃ³n Oficial</label>
                                     <p className="text-[10px] text-gray-400">
-                                        {isPassport ? "Sube una foto clara de la página de datos del Pasaporte." : "Sube ambas caras de la Cédula."}
+                                        {isPassport ? "Sube una foto clara de la pÃ¡gina de datos del Pasaporte." : "Sube ambas caras de la CÃ©dula."}
                                     </p>
                                 </div>
                             </div>
@@ -876,9 +458,9 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                                 Cargos Asignados {!isExternalManager && formData.companyType !== 'EIRL' && <span className="text-sbs-red">*</span>}
                                 <Tooltip text={
                                     formData.companyType === 'EIRL'
-                                        ? "El titular de la E.I.R.L. es siempre Propietario y Gerente por disposición legal."
+                                        ? "El titular de la E.I.R.L. es siempre Propietario y Gerente por disposiciÃ³n legal."
                                         : isExternalManager
-                                            ? "Opcional: Puedes designar socios como Gerentes adicionales para una administración mixta."
+                                            ? "Opcional: Puedes designar socios como Gerentes adicionales para una administraciÃ³n mixta."
                                             : "Al menos un socio debe ser designado como Gerente para representar a la empresa."
                                 } />
                              </label>
@@ -900,7 +482,7 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                                                     : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                                             }`}
                                         >
-                                            {role} {isActive && <span className="ml-1">✓</span>}
+                                            {role} {isActive && <span className="ml-1">âœ“</span>}
                                         </button>
                                      )
                                  })}
@@ -910,19 +492,19 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                         {/* Granular Address (Smart International Logic) */}
                         <div className="md:col-span-2 grid grid-cols-2 md:grid-cols-3 gap-3 bg-premium-surface-subtle p-4 rounded-xl border border-premium-border mt-2">
                             <div className="col-span-2 md:col-span-3 mb-1 flex items-center">
-                                <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Dirección Residencial</span>
-                                <Tooltip text="Dirección personal del socio (no de la empresa). El país de residencia determina el formato de la dirección." />
+                                <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">DirecciÃ³n Residencial</span>
+                                <Tooltip text="DirecciÃ³n personal del socio (no de la empresa). El paÃ­s de residencia determina el formato de la direcciÃ³n." />
                             </div>
                             
-                            {/* País de Residencia - Determina el formato de dirección */}
+                            {/* PaÃ­s de Residencia - Determina el formato de direcciÃ³n */}
                             <div className="col-span-2 md:col-span-3 mb-2 relative z-10">
                                 <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1 tracking-wider">
-                                    País de Residencia <span className="text-sbs-red">*</span>
+                                    PaÃ­s de Residencia <span className="text-sbs-red">*</span>
                                 </label>
                                 <select 
-                                    value={partner.residenceCountry || 'República Dominicana'} 
+                                    value={partner.residenceCountry || 'RepÃºblica Dominicana'} 
                                     onChange={e => {
-                                        // Actualizar residenceCountry Y limpiar campos en UNA SOLA operación
+                                        // Actualizar residenceCountry Y limpiar campos en UNA SOLA operaciÃ³n
                                         const updatedPartners = formData.partners.map(p => 
                                             p.id === partner.id 
                                                 ? { 
@@ -951,7 +533,7 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                                 onBlur={(e) => handleBlur(partner.id, 'addressStreet', e.target.value)}
                                 className={`${inputClass} text-xs ${isError(partner.id, 'addressStreet') ? 'border-red-300' : ''}`} 
                             />
-                            <input placeholder="Número" value={partner.addressNumber} onChange={e => handlePartnerChange(partner.id, 'addressNumber', e.target.value)} className={`${inputClass} text-xs`} />
+                            <input placeholder="NÃºmero" value={partner.addressNumber} onChange={e => handlePartnerChange(partner.id, 'addressNumber', e.target.value)} className={`${inputClass} text-xs`} />
                             <input placeholder="Edificio / Res." value={partner.addressBuilding || ''} onChange={e => handlePartnerChange(partner.id, 'addressBuilding', e.target.value)} className={`${inputClass} text-xs`} />
                             <input placeholder="Apto / Casa #" value={partner.addressSuite || ''} onChange={e => handlePartnerChange(partner.id, 'addressSuite', e.target.value)} className={`${inputClass} text-xs`} />
                             
@@ -963,7 +545,7 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                                 const regionLabel = postalConfig?.regionLabel || 'Estado / Provincia';
                                 
                                 if (isDominicanResident) {
-                                    // República Dominicana: Provincias + Municipios (sin código postal)
+                                    // RepÃºblica Dominicana: Provincias + Municipios (sin cÃ³digo postal)
                                     return (
                                         <>
                                             <select 
@@ -997,7 +579,7 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                                         </>
                                     );
                                 } else if (hasSpecialRegions) {
-                                    // Países con regiones especiales (USA, España, Italia, Chile, Canadá)
+                                    // PaÃ­ses con regiones especiales (USA, EspaÃ±a, Italia, Chile, CanadÃ¡)
                                     return (
                                         <>
                                             <select 
@@ -1016,7 +598,7 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                                                 onBlur={(e) => handleBlur(partner.id, 'addressCity', e.target.value)} 
                                                 className={`${inputClass} text-xs ${isError(partner.id, 'addressCity') ? 'border-red-300' : ''}`} 
                                             />
-                                            {/* Código Postal con etiqueta dinámica */}
+                                            {/* CÃ³digo Postal con etiqueta dinÃ¡mica */}
                                             {postalConfig && (
                                                 <input 
                                                     placeholder={postalConfig.label}
@@ -1029,7 +611,7 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                                         </>
                                     );
                                 } else {
-                                    // Otros países (campos libres + código postal genérico)
+                                    // Otros paÃ­ses (campos libres + cÃ³digo postal genÃ©rico)
                                     return (
                                         <>
                                             <input 
@@ -1047,7 +629,7 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                                                 className={`${inputClass} text-xs ${isError(partner.id, 'addressCity') ? 'border-red-300' : ''}`} 
                                             />
                                             <input 
-                                                placeholder="Código Postal" 
+                                                placeholder="CÃ³digo Postal" 
                                                 value={partner.postalCode || ''} 
                                                 onChange={e => handlePartnerChange(partner.id, 'postalCode', e.target.value)}
                                                 className={`${inputClass} text-xs font-mono`}
@@ -1102,7 +684,7 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                     }`}
                     title={formData.companyType === 'EIRL' ? "Una E.I.R.L. puede tener solo 1 titular" : ""}
                 >
-                    <span className="text-lg mr-1">+</span> {formData.companyType === 'EIRL' ? 'Titular único' : 'Añadir Socio'}
+                    <span className="text-lg mr-1">+</span> {formData.companyType === 'EIRL' ? 'Titular Ãºnico' : 'AÃ±adir Socio'}
                 </button>
                 <div className={`font-bold text-sm px-4 py-2 rounded-lg border ${Math.abs(totalPercentage - 100) < 0.1 ? 'bg-green-100 text-green-700 border-green-200' : 'bg-red-100 text-red-700 border-red-200'}`}>
                     Total: {totalPercentage}%
@@ -1123,15 +705,15 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                             <p className="text-xs text-gray-500">
                                 {formData.companyType === 'EIRL'
                                     ? isExternalManager
-                                        ? 'Selecciona quién será el titular de la firma digital: el propietario o el gerente externo.'
-                                        : 'El titular de la empresa será el responsable de la firma digital.'
-                                    : 'Selecciona cuál socio será el responsable de la firma digital de la empresa. Solo puede ser uno.'}
+                                        ? 'Selecciona quiÃ©n serÃ¡ el titular de la firma digital: el propietario o el gerente externo.'
+                                        : 'El titular de la empresa serÃ¡ el responsable de la firma digital.'
+                                    : 'Selecciona cuÃ¡l socio serÃ¡ el responsable de la firma digital de la empresa. Solo puede ser uno.'}
                             </p>
                         </div>
                     </div>
                     
                     <div className="space-y-2">
-                        {/* Opción: Gerente Externo (cuando aplica) */}
+                        {/* OpciÃ³n: Gerente Externo (cuando aplica) */}
                         {isExternalManager && formData.manager.name && (
                             <label
                                 className={`flex items-center p-4 rounded-xl border-2 cursor-pointer transition-all ${
@@ -1154,7 +736,7 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                                 <span className="text-[10px] bg-amber-500 text-white px-2 py-1 rounded-full font-bold ml-2">GERENTE EXTERNO</span>
                             </label>
                         )}
-                        {/* Opción: Socios / Titular */}
+                        {/* OpciÃ³n: Socios / Titular */}
                         {formData.partners.map((partner) => (
                             <label
                                 key={partner.id}
@@ -1201,7 +783,7 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
             )}
             
             <div className="flex justify-between pt-4">
-                <button onClick={prevStep} disabled={isSubmitting} className="px-8 py-4 rounded-full font-bold text-text-tertiary hover:text-sbs-blue transition-colors hover:bg-gray-50 disabled:opacity-50">Atrás</button>
+                <button onClick={prevStep} disabled={isSubmitting} className="px-8 py-4 rounded-full font-bold text-text-tertiary hover:text-sbs-blue transition-colors hover:bg-gray-50 disabled:opacity-50">AtrÃ¡s</button>
                 <button 
                     onClick={handleNext} 
                     disabled={isSubmitting} 

@@ -1,7 +1,5 @@
-import React, { useState, useEffect, lazy, Suspense } from 'react';
+import React, { lazy, Suspense } from 'react';
 import { ChevronRight, Loader2 } from 'lucide-react';
-import { onAuthStateChanged, User, signOut } from 'firebase/auth';
-import { auth } from './core/services/firebase';
 import LandingPage from './components/LandingPage';
 import StepProgressBar from './design/components/StepProgressBar';
 import StepTypeSelection from './components/StepTypeSelection';
@@ -15,17 +13,15 @@ import Header from './components/Header';
 import Footer from './design/components/Footer';
 import WhatsAppWidget from './components/WhatsAppWidget';
 import SummaryPage from './components/SummaryPage';
-import { AppStep, FormData } from './types';
-import { MANAGEMENT_DURATION, FISCAL_CLOSING_DATE, PackageName } from './constants';
+import { AppStep } from './types';
 import StepB from './components/StepB';
 import StepC from './components/StepC';
+import { useWizardState } from './core/hooks/useWizardState';
 
 const PaymentPage = lazy(() => import('./components/PaymentPage'));
 const TermsOfServicePage = lazy(() => import('./design/pages/TermsOfServicePage'));
 const PrivacyPolicyPage = lazy(() => import('./design/pages/PrivacyPolicyPage'));
 const RefundPolicyPage = lazy(() => import('./design/pages/RefundPolicyPage'));
-
-type PageView = 'main' | 'privacy' | 'terms' | 'refund' | 'login';
 
 const LoadingFallback = () => (
     <div className="min-h-screen flex flex-col items-center justify-center bg-premium-bg">
@@ -42,247 +38,27 @@ const DashboardPlaceholder = () => (
     </div>
 );
 
-// SECURITY: Version bump to invalidate potential corrupted old states
-const getLocalStorageKey = (userId: string | null): string => {
-    if (userId) {
-        return `sbs_form_v7_user_${userId}`;
-    }
-    return 'sbs_form_v7_guest';
-};
-
 const App: React.FC = () => {
-    const initialFormState: FormData = {
-        companyType: 'SRL',
-
-        hasRegisteredName: 'No',
-        nameOwnership: 'Un solo socio',
-
-        companyName: '',
-        socialObject: '',
-
-        companyStreet: '',
-        companyStreetNumber: '',
-        companySector: '',
-        companyCity: '',
-        companyProvince: '',
-
-        applicant: {
-            names: '',
-            surnames: '',
-            email: '',
-            phone: '',
-            isTitular: false
-        },
-
-        titulars: [],
-
-        fiscalClosing: FISCAL_CLOSING_DATE,
-        socialCapital: 100000,
-        partners: [],
-        manager: { type: 'Socio', name: '', idNumber: '', nationality: 'República Dominicana' },
-        managementDuration: MANAGEMENT_DURATION,
-        packageName: 'Essential 360',
-        paymentStatus: 'unpaid',
-        paymentMethod: 'other',
-
-        ncfTypes: [],
-    };
-
-    const loadSavedState = (userId: string | null) => {
-        try {
-            const storageKey = getLocalStorageKey(userId);
-            const saved = localStorage.getItem(storageKey);
-            if (saved) {
-                const parsed = JSON.parse(saved);
-
-                if (parsed.formData) {
-                    if (parsed.formData.titulars) {
-                        parsed.formData.titulars = parsed.formData.titulars.map((t: any) => ({
-                            ...t,
-                            idFront: null,
-                            idBack: null
-                        }));
-                    }
-
-                    if (parsed.formData.partners) {
-                        parsed.formData.partners = parsed.formData.partners.map((p: any) => ({
-                            ...p,
-                            idFront: null,
-                            idBack: null
-                        }));
-                    }
-
-                    parsed.formData.onapiCertificate = null;
-                    parsed.formData.logoFile = null;
-                    parsed.formData.paymentReceipt = null;
-                }
-
-                return parsed;
-            }
-        } catch (e) {
-        }
-        return null;
-    };
-
-    const [currentStep, setCurrentStep] = useState<AppStep>(AppStep.Landing);
-    const [highestStepReached, setHighestStepReached] = useState<AppStep>(AppStep.Landing);
-    const [formData, setFormData] = useState<FormData>(initialFormState);
-
-    const [page, setPage] = useState<PageView>('main');
-    const [user, setUser] = useState<User | null>(null);
-    const [authLoading, setAuthLoading] = useState(true);
-
-    useEffect(() => {
-        if (!auth) {
-            console.error('Firebase Auth no está disponible');
-            setAuthLoading(false);
-            return;
-        }
-
-        const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-            setUser(firebaseUser);
-            setAuthLoading(false);
-        });
-        return () => unsubscribe();
-    }, []);
-
-    const isAuthenticated = !!user;
-
-    useEffect(() => {
-        if (isAuthenticated && page === 'login') {
-            setStep(AppStep.Landing);
-            setPage('main');
-        }
-    }, [isAuthenticated, page]);
-
-    useEffect(() => {
-        if (!authLoading && !isAuthenticated && currentStep === AppStep.Dashboard) {
-            setPage('login');
-            setStep(AppStep.Landing);
-        }
-    }, [isAuthenticated, authLoading, currentStep]);
-
-    useEffect(() => {
-        window.scrollTo(0, 0);
-    }, [page]);
-
-    useEffect(() => {
-        if (!authLoading) {
-            const userId = user?.uid || null;
-            const storageKey = getLocalStorageKey(userId);
-            const stateToSave = {
-                formData,
-                currentStep,
-                highestStepReached
-            };
-            localStorage.setItem(storageKey, JSON.stringify(stateToSave));
-        }
-    }, [formData, currentStep, highestStepReached, user, authLoading]);
-
-    const updateFormData = (data: Partial<FormData>) => {
-        setFormData(prev => ({ ...prev, ...data }));
-    };
-
-    const setStep = (step: AppStep) => {
-        setCurrentStep(step);
-        window.scrollTo(0, 0);
-        if (step > highestStepReached) {
-            setHighestStepReached(step);
-        }
-    };
-
-    const handleStartFlow = (selectedPackage: PackageName) => {
-        updateFormData({ packageName: selectedPackage });
-        setStep(AppStep.StepTypeSelection);
-    };
-
-    const goToNextStep = () => {
-        if (currentStep === AppStep.StepA) {
-            setStep(AppStep.StepB);
-            return;
-        }
-
-        if (currentStep === AppStep.StepB) {
-             setStep(AppStep.Summary);
-             return;
-        }
-
-        if (currentStep === AppStep.Summary) {
-            setStep(AppStep.Payment);
-            return;
-        }
-
-        if (currentStep < AppStep.Success) {
-            let nextStep = currentStep + 1;
-            if (nextStep === AppStep.StepC) {
-                nextStep = AppStep.Summary;
-            }
-            setStep(nextStep);
-        }
-    };
-
-    const goToPrevStep = () => {
-        if (currentStep > AppStep.Landing) {
-            if (currentStep === AppStep.Payment) {
-                setStep(AppStep.Summary);
-                return;
-            }
-            if (currentStep === AppStep.Summary) {
-                setStep(AppStep.StepB);
-                return;
-            }
-            if (currentStep === AppStep.StepB) {
-                setStep(AppStep.StepA);
-                return;
-            }
-            const prevStep = currentStep - 1;
-            setStep(prevStep);
-        }
-    };
-
-    const goToStep = (step: AppStep) => {
-        if (step <= highestStepReached) {
-            if (step === AppStep.StepC) return;
-            setCurrentStep(step);
-        }
-    };
-
-    const handlePaymentSuccess = () => {
-        setStep(AppStep.Login);
-    }
-
-    const handleStepLogin = () => {
-        setStep(AppStep.PostPaymentWelcome);
-    }
-
-    const handleStandaloneLogin = () => {
-    }
-
-    const handleLogout = async () => {
-        try {
-            if (auth) {
-                await signOut(auth);
-            }
-            setStep(AppStep.Landing);
-            setPage('main');
-        } catch (error) {
-            console.error('Error al cerrar sesión:', error);
-        }
-    }
-
-    const handleFinalSubmit = () => {
-        try {
-            const userId = user?.uid || null;
-            const storageKey = getLocalStorageKey(userId);
-            localStorage.removeItem(storageKey);
-            setStep(AppStep.Success);
-        } catch (error) {
-            console.error("ERROR AL FINALIZAR LA SOLICITUD:", error);
-        }
-    }
-
-    // SECURITY: Payment Guard to prevent access bypass
-    const isPaymentVerified = formData.paymentStatus === 'paid' || formData.paymentStatus === 'pending_confirmation';
+    const {
+        currentStep,
+        highestStepReached,
+        formData,
+        updateFormData,
+        page, setPage,
+        authLoading,
+        isAuthenticated,
+        isPaymentVerified,
+        setStep,
+        goToNextStep,
+        goToPrevStep,
+        goToStep,
+        handleStartFlow,
+        handlePaymentSuccess,
+        handleStepLogin,
+        handleStandaloneLogin,
+        handleFinalSubmit,
+        dummyStart,
+    } = useWizardState();
 
     const renderFormStep = () => {
         if ([AppStep.Login, AppStep.PostPaymentWelcome, AppStep.PostPaymentForm, AppStep.Success, AppStep.Dashboard].includes(currentStep)) {
@@ -419,8 +195,6 @@ const App: React.FC = () => {
                 );
         }
     }
-
-    const dummyStart = () => handleStartFlow('Essential 360');
 
     const isLandingPage = currentStep === AppStep.Landing && page === 'main';
     const isDashboard = currentStep === AppStep.Dashboard;

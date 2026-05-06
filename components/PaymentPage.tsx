@@ -1,8 +1,9 @@
-
-import React, { useState, useEffect } from 'react';
+﻿
+import React from 'react';
 import { FormData } from '../types';
-import { PACKAGES, ALLOWED_FILE_TYPES, ORPHAN_SALE_KEY } from '../constants';
-import { calculateICCTax, formatCurrency } from '../core/utils/calculations';
+import { PACKAGES, ALLOWED_FILE_TYPES } from '../constants';
+import { formatCurrency } from '../core/utils/calculations';
+import { usePayment, bankAccounts, PaymentMethod } from '../core/hooks/usePayment';
 import { Check, CheckCircle, Landmark, CreditCard, ChevronDown, X, Building, Upload, Trash2, Loader2, ChevronLeft } from 'lucide-react';
 import { PayPalScriptProvider, PayPalButtons } from '@paypal/react-paypal-js';
 
@@ -16,275 +17,46 @@ interface PaymentPageProps {
     prevStep: () => void;
 }
 
-type PaymentMethod = 'azul' | 'gpay' | 'paypal' | 'transfer';
-
-// Datos bancarios simplificados (Sin colores de marca)
-const bankAccounts = [
-    {
-        name: 'BanReservas',
-        type: 'Cta. Corriente',
-        number: '9600492156',
-        beneficiary: 'Smart Biz Services S.R.L.',
-        legalId: 'RNC: 1-31-68858-6'
-    },
-    {
-        name: 'Banco Popular',
-        type: 'Cta. Corriente',
-        number: '839077625',
-        beneficiary: 'Julio Darwin Mendoza Estrella',
-        legalId: 'Cédula: 223-0072682-9'
-    },
-    {
-        name: 'Banco BHD',
-        type: 'Cta. Ahorros',
-        number: '08490540050',
-        beneficiary: 'Julio Darwin Mendoza Estrella',
-        legalId: 'Cédula: 223-0072682-9'
-    },
-    {
-        name: 'Asociación Cibao',
-        type: 'Cta. Ahorros',
-        number: '100270095230',
-        beneficiary: 'Julio Darwin Mendoza Estrella',
-        legalId: 'Cédula: 223-0072682-9'
-    }
-];
-
 const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onPaymentSuccess, prevStep }) => {
-    const [isPaying, setIsPaying] = useState(false);
-    const [isVerifying, setIsVerifying] = useState(false);
-    const [error, setError] = useState('');
-    const [termsAccepted, setTermsAccepted] = useState(false);
-    const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('transfer');
-    
-    // Modal & Copy Logic
-    const [showBankModal, setShowBankModal] = useState(false);
-    const [selectedBankIndex, setSelectedBankIndex] = useState<number | null>(null);
-    const [voucherFile, setVoucherFile] = useState<File | null>(null);
-    const [copyFeedback, setCopyFeedback] = useState(false);
-    const [uploadError, setUploadError] = useState<string | null>(null);
-    
-    // Drag & Drop State
-    const [isDragging, setIsDragging] = useState(false);
-    
-    // Estado para expandir lista de beneficios
-    const [showAllFeatures, setShowAllFeatures] = useState(false);
-    
-    // Estado para la tasa de cambio dinámica
-    const [exchangeRate, setExchangeRate] = useState<number>(0);
-    const [isLoadingRate, setIsLoadingRate] = useState<boolean>(true);
-
-    const SAFE_FALLBACK_RATE = 60.00; // Critical Fallback to prevent Div by Zero
-
-    // Obtener detalles del paquete seleccionado
-    const selectedPackageName = formData.packageName || 'Essential 360';
-    const packageDetails = PACKAGES[selectedPackageName];
-    
-    // Calcular total
-    const constitutionTax = calculateICCTax(formData.socialCapital);
-    const totalAmount = packageDetails.price + constitutionTax;
-    const formattedTotal = formatCurrency(totalAmount);
-
-    // Fetch Live Exchange Rate
-    useEffect(() => {
-        const fetchRate = async () => {
-            try {
-                // Usamos una API pública confiable para obtener la tasa real
-                const response = await fetch('https://open.er-api.com/v6/latest/USD');
-                const data = await response.json();
-                
-                if (data && data.rates && data.rates.DOP) {
-                    const rate = data.rates.DOP; 
-                    // Validate rate is sane (e.g. not 0)
-                    setExchangeRate(rate > 0 ? rate : SAFE_FALLBACK_RATE);
-                } else {
-                    throw new Error("No rate data");
-                }
-            } catch {
-                setExchangeRate(SAFE_FALLBACK_RATE); 
-            } finally {
-                setIsLoadingRate(false);
-            }
-        };
-
-        fetchRate();
-    }, []);
-
-    // FINANCIAL SAFETY: Ensure exchangeRate is strictly > 0 before division
-    const safeRate = exchangeRate > 0 ? exchangeRate : SAFE_FALLBACK_RATE;
-    const amountInUSD = (totalAmount / safeRate).toFixed(2);
-
-    // PayPal Handlers
-    const handlePayPalCreateOrder = (data: any, actions: any) => {
-        return actions.order.create({
-            purchase_units: [{
-                description: `Formalizate - ${selectedPackageName}`.substring(0, 100),
-                amount: {
-                    currency_code: "USD",
-                    value: amountInUSD
-                }
-            }]
-        });
-    };
-
-    const handlePayPalApprove = async (data: any, actions: any) => {
-        try {
-            const details = await actions.order.capture();
-            
-            updateFormData({ 
-                paymentMethod: 'paypal', 
-                paymentStatus: 'paid',
-                totalAmount: totalAmount
-            });
-
-            // 🔗 VENTA HUÉRFANA: Guardar ID de transacción PayPal para vincular después del login
-            localStorage.setItem(ORPHAN_SALE_KEY, details.id);
-
-            onPaymentSuccess();
-        } catch {
-            setError("Hubo un error al procesar el pago. Por favor contacta soporte.");
-        }
-    };
-
-    const handlePayPalError = (err: any) => {
-        // Robust Error Extraction
-        let message = "";
-        
-        try {
-            if (err instanceof Error) {
-                message = err.message;
-            } else if (typeof err === 'object' && err !== null) {
-                message = (err as any).message || (err as any).code || JSON.stringify(err);
-            } else {
-                message = String(err);
-            }
-        } catch {
-            message = "Unknown error";
-        }
-
-        const lowerMsg = message.toLowerCase();
-
-        // Suppress known noise errors
-        const ignoredMessages = [
-            "paypal_js_sdk_v5_unhandled_exception",
-            "script error",
-            "[object object]",
-            "popup_close",
-            "window_closed",
-            "failed to load the app"
-        ];
-
-        if (message === "[object Object]" || ignoredMessages.some(ignored => lowerMsg.includes(ignored))) {
-            return;
-        }
-
-        alert("Error de PayPal: " + message + "\n\nPor favor intenta de nuevo o usa Transferencia Bancaria.");
-        setError("Hubo un error al procesar el pago con PayPal. Por favor intenta de nuevo o usa Transferencia.");
-    };
-
-    const handlePayPalCancel = () => {
-        // No mostramos error ya que el usuario canceló intencionalmente
-    };
-
-    const handlePaymentClick = () => {
-        if (!termsAccepted) return;
-        
-        if (paymentMethod === 'transfer') {
-            setShowBankModal(true);
-        }
-    };
-
-    const handleBankSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const index = parseInt(e.target.value);
-        if (isNaN(index)) {
-            setSelectedBankIndex(null);
-            return;
-        }
-
-        setSelectedBankIndex(index);
-        setCopyFeedback(false); // Reset feedback on change
-    };
-
-    const handleCopyDetails = () => {
-        if (selectedBankIndex === null) return;
-        
-        const bank = bankAccounts[selectedBankIndex];
-        // SOLO copiar el número de cuenta (sin banco ni tipo)
-        navigator.clipboard.writeText(bank.number);
-        setCopyFeedback(true);
-        setTimeout(() => setCopyFeedback(false), 2500);
-    }
-
-    // --- DRAG AND DROP HANDLERS ---
-    const handleDragOver = (e: React.DragEvent<HTMLLabelElement>) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (selectedBankIndex !== null) {
-            setIsDragging(true);
-        }
-    };
-
-    const handleDragLeave = (e: React.DragEvent<HTMLLabelElement>) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragging(false);
-    };
-
-    const handleDrop = (e: React.DragEvent<HTMLLabelElement>) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragging(false);
-
-        if (selectedBankIndex === null) return;
-
-        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-            setVoucherFile(e.dataTransfer.files[0]);
-            setUploadError(null); // Clear previous errors
-        }
-    };
-
-    const confirmTransfer = async () => {
-        if (!voucherFile) {
-            setUploadError("Debes subir el comprobante antes de confirmar.");
-            return;
-        }
-
-        setIsVerifying(true);
-        setUploadError(null);
-        
-        // --- SIMPLIFIED FLOW WITHOUT AI ---
-        // Just simulate a brief network request/upload
-        setTimeout(() => {
-            updateFormData({ 
-                paymentMethod: 'transfer',
-                paymentStatus: 'pending_confirmation',
-                paymentReceipt: voucherFile, // 🔥 CRÍTICO: Persistir el archivo en formData
-                transferBankName: selectedBankIndex !== null 
-                    ? bankAccounts[selectedBankIndex].name 
-                    : undefined,
-                totalAmount: totalAmount
-            });
-
-            // 🔗 VENTA HUÉRFANA: Generar ID temporal único para transferencias
-            const tempSaleId = `transfer_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
-            localStorage.setItem(ORPHAN_SALE_KEY, tempSaleId);
-
-            onPaymentSuccess();
-            setShowBankModal(false);
-            setIsVerifying(false);
-        }, 1500);
-    };
-
-    const CheckIcon = () => (
-        <Check className="w-4 h-4 text-sbs-blue mr-3 flex-shrink-0" />
-    );
-
-    const isBankSelected = selectedBankIndex !== null;
+    const {
+        isPaying, setIsPaying,
+        isVerifying,
+        error,
+        termsAccepted, setTermsAccepted,
+        paymentMethod, setPaymentMethod,
+        showBankModal, setShowBankModal,
+        selectedBankIndex,
+        voucherFile, setVoucherFile,
+        copyFeedback,
+        uploadError,
+        isDragging,
+        showAllFeatures, setShowAllFeatures,
+        exchangeRate,
+        isLoadingRate,
+        selectedPackageName,
+        packageDetails,
+        constitutionTax,
+        totalAmount,
+        formattedTotal,
+        amountInUSD,
+        isBankSelected,
+        handlePayPalCreateOrder,
+        handlePayPalApprove,
+        handlePayPalError,
+        handlePayPalCancel,
+        handlePaymentClick,
+        handleBankSelect,
+        handleCopyDetails,
+        handleDragOver,
+        handleDragLeave,
+        handleDrop,
+        confirmTransfer,
+    } = usePayment(formData, updateFormData, onPaymentSuccess);
 
     return (
         <div className="text-center py-12 animate-fade-in-up relative">
-            <h2 className="text-3xl font-bold text-sbs-blue mb-4">Activación de Cuenta</h2>
-            <p className="text-text-secondary mb-12 max-w-lg mx-auto font-light">Estás a un paso de iniciar la formalización legal.</p>
+            <h2 className="text-3xl font-bold text-sbs-blue mb-4">ActivaciÃ³n de Cuenta</h2>
+            <p className="text-text-secondary mb-12 max-w-lg mx-auto font-light">EstÃ¡s a un paso de iniciar la formalizaciÃ³n legal.</p>
             
              <div className="bg-white border border-gray-200 text-gray-900 p-10 rounded-[2.5rem] shadow-premium mb-10 max-w-lg w-full text-left relative mx-auto overflow-hidden">
                 {/* Visual Consistency: Invoice Style Header */}
@@ -313,7 +85,7 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onP
                     {constitutionTax > 0 && (
                         <div className="flex justify-between items-center text-sm">
                             <div>
-                                <span className="text-gray-600 font-medium block">Impuesto Constitución</span>
+                                <span className="text-gray-600 font-medium block">Impuesto ConstituciÃ³n</span>
                                 <span className="text-[10px] text-gray-400">1% excedente capital</span>
                             </div>
                             <span className="font-bold text-gray-900">+ {formatCurrency(constitutionTax)}</span>
@@ -325,10 +97,10 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onP
                     {/* Features List - Expandable */}
                     <div className="space-y-2">
                         {(showAllFeatures ? packageDetails.features : packageDetails.features.slice(0, 3)).map((feat, i) => {
-                            // Agregar "(por 1 año)" a Página Web si no lo tiene ya
+                            // Agregar "(por 1 aÃ±o)" a PÃ¡gina Web si no lo tiene ya
                             let displayFeat = feat;
-                            if (feat.includes('Página Web') && !feat.includes('año')) {
-                                displayFeat = feat + ' (por 1 año)';
+                            if (feat.includes('PÃ¡gina Web') && !feat.includes('aÃ±o')) {
+                                displayFeat = feat + ' (por 1 aÃ±o)';
                             }
                             return (
                                 <div key={i} className="flex items-start animate-fade-in">
@@ -351,7 +123,7 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onP
             </div>
 
             <div className="max-w-lg mx-auto mb-8">
-                <h3 className="text-xs font-bold text-text-tertiary uppercase tracking-widest mb-4 text-left">Selecciona Método de Pago</h3>
+                <h3 className="text-xs font-bold text-text-tertiary uppercase tracking-widest mb-4 text-left">Selecciona MÃ©todo de Pago</h3>
                 <div className="grid grid-cols-2 gap-4">
                     <button 
                         onClick={() => { setPaymentMethod('transfer'); setTermsAccepted(false); setError(''); }}
@@ -411,7 +183,7 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onP
                          <Check className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white opacity-0 peer-checked:opacity-100 transition-opacity" strokeWidth={3} />
                     </div>
                     <span className="ml-3 text-sm text-text-secondary group-hover:text-text-primary transition-colors select-none">
-                        He leído y acepto los <span className="font-bold text-sbs-blue underline">Términos y Condiciones</span>, la <span className="font-bold text-sbs-blue underline">Política de Privacidad</span> y la <span className="font-bold text-sbs-blue underline">Política de Reembolso</span>, incluyendo el tratamiento de mis datos personales para la constitución de mi empresa.
+                        He leÃ­do y acepto los <span className="font-bold text-sbs-blue underline">TÃ©rminos y Condiciones</span>, la <span className="font-bold text-sbs-blue underline">PolÃ­tica de Privacidad</span> y la <span className="font-bold text-sbs-blue underline">PolÃ­tica de Reembolso</span>, incluyendo el tratamiento de mis datos personales para la constituciÃ³n de mi empresa.
                     </span>
                 </label>
             </div>
@@ -422,7 +194,7 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onP
                     <div className="w-full max-w-[300px] min-h-[150px]">
                         {!termsAccepted ? (
                              <div className="bg-gray-100 text-gray-500 text-xs p-4 rounded-xl border border-gray-200 font-medium">
-                                 Por favor acepta los términos y condiciones arriba para habilitar el botón de pago seguro de PayPal.
+                                 Por favor acepta los tÃ©rminos y condiciones arriba para habilitar el botÃ³n de pago seguro de PayPal.
                              </div>
                         ) : isLoadingRate ? (
                             <div className="flex flex-col items-center justify-center p-4">
@@ -480,9 +252,9 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onP
             </div>
             
             <div className="mt-12 flex flex-col items-center">
-                <p className="text-xs text-gray-400 uppercase tracking-widest mb-4 font-bold">Transacción Protegida SSL</p>
+                <p className="text-xs text-gray-400 uppercase tracking-widest mb-4 font-bold">TransacciÃ³n Protegida SSL</p>
                 <div className="flex items-center space-x-6 opacity-80 hover:opacity-100 transition-opacity grayscale hover:grayscale-0">
-                    {/* Badge Visa Secure: preparado para versión WebP con fallback PNG actual */}
+                    {/* Badge Visa Secure: preparado para versiÃ³n WebP con fallback PNG actual */}
                     <img 
                         src="https://storage.googleapis.com/pics_html/verified-by-visa-seeklogo.svg" 
                         alt="Verified by Visa" 
@@ -510,7 +282,7 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onP
                 </div>
             </div>
 
-            {/* MODAL DE TRANSFERENCIA BANCARIA - REDISEÑO PAYPAL STYLE (CLEAN INFO PANEL) */}
+            {/* MODAL DE TRANSFERENCIA BANCARIA - REDISEÃ‘O PAYPAL STYLE (CLEAN INFO PANEL) */}
             {showBankModal && (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
                     {/* Darker Blur Backdrop for Focus */}
@@ -572,13 +344,13 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onP
                                              </div>
                                          </div>
                                          <div className={`text-xs font-bold px-3 py-1 rounded-full transition-colors duration-300 ${copyFeedback ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500 group-hover:bg-blue-50 group-hover:text-sbs-blue'}`}>
-                                             {copyFeedback ? "¡Copiado!" : "Copiar"}
+                                             {copyFeedback ? "Â¡Copiado!" : "Copiar"}
                                          </div>
                                      </div>
 
                                      {/* Account Number Box */}
                                      <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 mb-5 text-center">
-                                         <p className="text-[10px] text-gray-400 uppercase tracking-widest mb-1">Número de Cuenta</p>
+                                         <p className="text-[10px] text-gray-400 uppercase tracking-widest mb-1">NÃºmero de Cuenta</p>
                                          <p className="font-mono text-2xl font-bold text-sbs-blue tracking-wider">{bankAccounts[selectedBankIndex].number}</p>
                                      </div>
 
@@ -589,7 +361,7 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onP
                                              <span className="font-medium text-gray-800 text-right">{bankAccounts[selectedBankIndex].beneficiary}</span>
                                          </div>
                                          <div className="flex justify-between items-center">
-                                             <span className="text-gray-500">Identificación</span>
+                                             <span className="text-gray-500">IdentificaciÃ³n</span>
                                              <span className="font-mono font-medium text-gray-800 text-right bg-gray-50 px-2 py-0.5 rounded">{bankAccounts[selectedBankIndex].legalId}</span>
                                          </div>
                                      </div>
@@ -619,7 +391,7 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onP
                                             <div className={`p-3 bg-white rounded-full shadow-sm mb-2 transition-transform duration-300 ${isBankSelected ? 'group-hover:scale-110' : ''}`}>
                                                 <Upload className="w-6 h-6" />
                                             </div>
-                                            <span className="text-xs font-bold">{!isBankSelected ? 'Selecciona un banco primero' : isDragging ? 'Suelta el archivo aquí' : 'Arrastra o haz clic para subir imagen'}</span>
+                                            <span className="text-xs font-bold">{!isBankSelected ? 'Selecciona un banco primero' : isDragging ? 'Suelta el archivo aquÃ­' : 'Arrastra o haz clic para subir imagen'}</span>
                                         </div>
                                         <input type="file" className="hidden" accept={ALLOWED_FILE_TYPES} disabled={!isBankSelected} onChange={(e) => { setVoucherFile(e.target.files ? e.target.files[0] : null); setUploadError(null); }} />
                                     </label>
