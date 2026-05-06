@@ -1,5 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React from 'react';
 import { X } from 'lucide-react';
+import { useWhatsAppAutoOpen } from '../core/hooks/useWhatsAppAutoOpen';
 
 const WHATSAPP_NUMBER = '18296487176';
 const PREFILLED_MESSAGE = 'Hola, me interesa formalizar mi empresa. Vi su página y quiero más información.';
@@ -9,26 +10,7 @@ const WHATSAPP_ICON_URL = 'https://storage.googleapis.com/pics_html/whatsapp-ico
 const PROFILE_PHOTO_URL = 'https://storage.googleapis.com/pics_html/foto_jdme.jpg';
 
 const WhatsAppWidget: React.FC = () => {
-    const [isOpen, setIsOpen] = useState(false);
-    const hasOpenedRef = useRef(false);
-
-    // Auto-apertura con sonido (igual que el chatbot anterior)
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            if (!hasOpenedRef.current) {
-                setIsOpen(true);
-
-                const audio = new Audio('/notification.mp3');
-                audio.volume = 0.5;
-                audio.play().catch(() => {
-                    // Si el navegador bloquea autoplay, abrimos en silencio
-                });
-
-                hasOpenedRef.current = true;
-            }
-        }, 13000); // Se abre a los 13 segundos
-        return () => clearTimeout(timer);
-    }, []);
+    const { isOpen, setIsOpen } = useWhatsAppAutoOpen();
 
     return (
         <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end font-sans">

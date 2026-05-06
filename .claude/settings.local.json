@@ -3,7 +3,8 @@
     "allow": [
       "Bash(npm install *)",
       "PowerShell(winget install GitHub.cli)",
-      "Bash(gh auth *)"
+      "Bash(gh auth *)",
+      "Bash(npm run *)"
     ]
   }
 }

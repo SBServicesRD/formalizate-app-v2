@@ -1,81 +1,23 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { AtSign, Lock, Eye, EyeOff, Loader2, AlertCircle } from 'lucide-react';
-import { auth, googleProvider } from '../core/services/firebase';
-import { 
-    signInWithPopup, 
-    signInWithEmailAndPassword,
-    createUserWithEmailAndPassword,
-    AuthError
-} from 'firebase/auth';
+import { useAuthLogin } from '../core/hooks/useAuthLogin';
 
 interface LoginPageProps {
     onLogin: () => void;
 }
 
 const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [showPassword, setShowPassword] = useState(false);
-    const [isLoading, setIsLoading] = useState(false);
-    const [isGoogleLoading, setIsGoogleLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [isSignUp, setIsSignUp] = useState(false);
-
-    // Mapeo de errores de Firebase a mensajes amigables
-    const getErrorMessage = (errorCode: string): string => {
-        const errorMessages: Record<string, string> = {
-            'auth/invalid-email': 'El correo electrónico no es válido.',
-            'auth/user-disabled': 'Esta cuenta ha sido deshabilitada.',
-            'auth/user-not-found': 'No existe una cuenta con este correo. Si eres nuevo, primero debes adquirir un plan.',
-            'auth/wrong-password': 'Contraseña incorrecta.',
-            'auth/invalid-credential': 'Credenciales inválidas. Verifica tu correo y contraseña.',
-            'auth/popup-closed-by-user': 'Cerraste la ventana de inicio de sesión.',
-            'auth/cancelled-popup-request': 'Operación cancelada.',
-            'auth/network-request-failed': 'Error de conexión. Verifica tu internet.',
-            'auth/too-many-requests': 'Demasiados intentos. Espera un momento.',
-            'auth/email-already-in-use': 'Este correo ya está registrado. Inicia sesión en su lugar.',
-            'auth/weak-password': 'La contraseña debe tener al menos 6 caracteres.',
-        };
-        return errorMessages[errorCode] || 'Ocurrió un error. Intenta nuevamente.';
-    };
-
-    // Login con Google
-    const handleGoogleLogin = async () => {
-        setError(null);
-        setIsGoogleLoading(true);
-        try {
-            await signInWithPopup(auth, googleProvider);
-            onLogin();
-        } catch (err) {
-            const authError = err as AuthError;
-            setError(getErrorMessage(authError.code));
-        } finally {
-            setIsGoogleLoading(false);
-        }
-    };
-
-    // Login o Registro con Email y Contraseña
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!email || !password) return;
-        
-        setError(null);
-        setIsLoading(true);
-        
-        try {
-            if (isSignUp) {
-                await createUserWithEmailAndPassword(auth, email, password);
-            } else {
-                await signInWithEmailAndPassword(auth, email, password);
-            }
-            onLogin();
-        } catch (err) {
-            const authError = err as AuthError;
-            setError(getErrorMessage(authError.code));
-        } finally {
-            setIsLoading(false);
-        }
-    };
+    const {
+        email, setEmail,
+        password, setPassword,
+        showPassword, setShowPassword,
+        isLoading,
+        isGoogleLoading,
+        error, setError,
+        isSignUp, setIsSignUp,
+        handleGoogleLogin,
+        handleSubmit,
+    } = useAuthLogin(onLogin);
 
     return (
         <div className="min-h-[70vh] flex flex-col items-center justify-center animate-fade-in-up py-12 px-4">

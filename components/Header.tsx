@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { LogIn, X, Menu } from 'lucide-react';
+import { useHeaderScroll } from '../core/hooks/useHeaderScroll';
 
 type PageView = 'main' | 'privacy' | 'terms' | 'refund';
 
@@ -43,37 +44,8 @@ const NavLink: React.FC<{
 );
 
 const Header: React.FC<HeaderProps> = ({ isLanding, showSaveExit = false, isDashboard = false, isLegal = false, onStart, setPage, onExit }) => {
-    const [isScrolled, setIsScrolled] = useState(false);
+    const { isScrolled, activeSection } = useHeaderScroll(isLanding);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
-    const [activeSection, setActiveSection] = useState('inicio');
-
-    useEffect(() => {
-        const handleScroll = () => {
-            setIsScrolled(window.scrollY > 20);
-
-            if (isLanding) {
-                const sections = ['inicio', 'resultados', 'servicios', 'proceso', 'legalidad', 'faq'];
-                let current = '';
-                
-                for (const section of sections) {
-                    const element = document.getElementById(section);
-                    if (element) {
-                        const rect = element.getBoundingClientRect();
-                        if (rect.top <= 150) {
-                            current = section;
-                        }
-                    }
-                }
-                
-                if (current) {
-                    setActiveSection(current);
-                }
-            }
-        };
-        window.addEventListener('scroll', handleScroll);
-        handleScroll();
-        return () => window.removeEventListener('scroll', handleScroll);
-    }, [isLanding]);
 
     const scrollToSection = (sectionId: string) => {
         setPage('main');

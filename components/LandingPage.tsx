@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { PACKAGES, PackageName, TESTIMONIALS } from '../constants';
+import { useLandingReviews } from '../core/hooks/useLandingReviews';
 import { Check, X, ArrowRight, HelpCircle, Clock, DollarSign, CheckCircle, ChevronDown, Lock, Star, ArrowDown, IdCard, FileSignature, Building2, BadgeCheck, FileText, Landmark } from 'lucide-react';
 
 interface LandingPageProps {
@@ -166,14 +167,6 @@ const SocialProofSection = () => {
     );
 };
 
-interface GoogleReview {
-    author_name: string;
-    profile_photo_url: string | null;
-    rating: number;
-    text: string;
-    relative_time_description: string;
-}
-
 const BentoGridSection = () => {
     const [currentStepIndex, setCurrentStepIndex] = useState(0);
     const steps = [
@@ -220,27 +213,7 @@ const BentoGridSection = () => {
     ];
 
     const [currentReviewIndex, setCurrentReviewIndex] = useState(0);
-    const [reviews, setReviews] = useState<GoogleReview[]>([]);
-    const [isLoadingReviews, setIsLoadingReviews] = useState(true);
-
-    useEffect(() => {
-        const fetchReviews = async () => {
-            try {
-                const response = await fetch('/api/reviews');
-                const data = await response.json();
-                
-                if (data.reviews && data.reviews.length > 0) {
-                    setReviews(data.reviews);
-                }
-            } catch {
-                // Silently fall back to static testimonials
-            } finally {
-                setIsLoadingReviews(false);
-            }
-        };
-
-        fetchReviews();
-    }, []);
+    const { reviews } = useLandingReviews();
 
     const displayReviews = reviews.length > 0 
         ? reviews.map(r => ({
