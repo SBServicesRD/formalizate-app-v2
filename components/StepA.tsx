@@ -49,7 +49,7 @@ const StepA: React.FC<StepAProps> = ({ formData, updateFormData, nextStep, prevS
                     id: Date.now(),
                     names: '',
                     surnames: '',
-                    idNumber: '',
+                    documentType: 'Cédula', idNumber: '',
                     idFront: null,
                     idBack: null
                 }]
@@ -212,7 +212,7 @@ const StepA: React.FC<StepAProps> = ({ formData, updateFormData, nextStep, prevS
                 // No hay socios, agregar titular vacío directamente
                 newTitulars.push({
                     id: Date.now(),
-                    names: '', surnames: '', idNumber: '', idFront: null, idBack: null
+                    names: '', surnames: '', documentType: 'Cédula', idNumber: '', idFront: null, idBack: null
                 });
             }
         } else if (newOwnership === 'Un solo socio' && newTitulars.length > 1) {
@@ -241,7 +241,7 @@ const StepA: React.FC<StepAProps> = ({ formData, updateFormData, nextStep, prevS
             // Crear titular completamente nuevo
             newTitulars.push({
                 id: Date.now(),
-                names: '', surnames: '', idNumber: '', idFront: null, idBack: null
+                names: '', surnames: '', documentType: 'Cédula', idNumber: '', idFront: null, idBack: null
             });
         } else {
             // Usar datos del socio existente
@@ -266,9 +266,7 @@ const StepA: React.FC<StepAProps> = ({ formData, updateFormData, nextStep, prevS
         const newTitulars = [...formData.titulars];
         
         // Mask Cédula onChange
-        if (field === 'idNumber') {
-            value = formatCedula(value); 
-        }
+        if (field === 'idNumber' && newTitulars[index].documentType === 'Cédula') { value = formatCedula(value); }
         
         newTitulars[index] = { ...newTitulars[index], [field]: value };
         updateFormData({ titulars: newTitulars });
@@ -322,9 +320,7 @@ const StepA: React.FC<StepAProps> = ({ formData, updateFormData, nextStep, prevS
         const errorKey = `titular_${index}_${field === 'idNumber' ? 'id' : field}`;
 
         if (field === 'idNumber') {
-            if (!validateRequired(cleanValue)) newErrors[errorKey] = 'Cédula requerida';
-            else if (!validateCedula(cleanValue)) newErrors[errorKey] = 'Formato inválido (XXX-XXXXXXX-X)';
-            else delete newErrors[errorKey];
+            if (!validateRequired(cleanValue)) newErrors[errorKey] = 'Documento requerido'; else if (formData.titulars[index].documentType === 'Cédula' && !validateCedula(cleanValue)) newErrors[errorKey] = 'Formato inválido (XXX-XXXXXXX-X)'; else if (formData.titulars[index].documentType === 'Pasaporte' && cleanValue.length > 20) newErrors[errorKey] = 'Máximo 20 caracteres'; else delete newErrors[errorKey];
         } else if (field === 'names' || field === 'surnames') {
              if (!validateRequired(cleanValue)) newErrors[errorKey] = 'Requerido';
              else delete newErrors[errorKey];
@@ -441,7 +437,7 @@ const StepA: React.FC<StepAProps> = ({ formData, updateFormData, nextStep, prevS
             formData.titulars.forEach((t, i) => {
                 if (!validateRequired(t.names)) newErrors[`titular_${i}_names`] = 'Nombre requerido';
                 if (!validateRequired(t.surnames)) newErrors[`titular_${i}_surnames`] = 'Apellido requerido';
-                if (!validateCedula(t.idNumber)) newErrors[`titular_${i}_id`] = 'Cédula inválida (XXX-XXXXXXX-X)';
+                if (!validateRequired(t.idNumber)) newErrors[`titular_${i}_id`] = 'Documento requerido'; else if (t.documentType === 'Cédula' && !validateCedula(t.idNumber)) newErrors[`titular_${i}_id`] = 'Cédula inválida (XXX-XXXXXXX-X)'; else if (t.documentType === 'Pasaporte' && t.idNumber.length > 20) newErrors[`titular_${i}_id`] = 'Máximo 20 caracteres';
                 if (!t.idFront) newErrors[`titular_${i}_front`] = 'Foto frontal requerida';
                 if (!t.idBack) newErrors[`titular_${i}_back`] = 'Foto dorsal requerida';
             });
@@ -500,7 +496,7 @@ const StepA: React.FC<StepAProps> = ({ formData, updateFormData, nextStep, prevS
                             birthDate: '', // Campo obligatorio, se llenará en StepB
                             maritalStatus: 'Soltero(a)',
                             profession: '',
-                            documentType: 'Cédula',
+                            documentType: t.documentType,
                             residenceCountry: 'República Dominicana', // País de residencia
                             addressStreet: '', addressNumber: '', addressSector: '', addressCity: '', addressProvince: '',
                             postalCode: '', // Código postal para direcciones internacionales
@@ -519,14 +515,13 @@ const StepA: React.FC<StepAProps> = ({ formData, updateFormData, nextStep, prevS
                         id: Date.now(),
                         names: formData.applicant.names,
                         surnames: formData.applicant.surnames,
-                        idNumber: '',
+                        documentType: 'Cédula', idNumber: '',
                         idFront: null,
                         idBack: null,
                         nationality: 'República Dominicana',
-                        birthDate: '', // Campo obligatorio, se llenará en StepB
+                        birthDate: '',
                         maritalStatus: 'Soltero(a)',
                         profession: '',
-                        documentType: 'Cédula',
                         residenceCountry: 'República Dominicana', // País de residencia
                         addressStreet: '', addressNumber: '', addressSector: '', addressCity: '', addressProvince: '',
                         postalCode: '', // Código postal para direcciones internacionales

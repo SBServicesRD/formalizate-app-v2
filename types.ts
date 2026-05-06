@@ -24,6 +24,7 @@ export interface Titular {
     id: number;
     names: string;
     surnames: string;
+    documentType: 'Cédula' | 'Pasaporte';
     idNumber: string;
     idFront: File | null;
     idBack: File | null;
@@ -47,6 +48,7 @@ export interface Partner {
     matrimonialRegime?: MatrimonialRegime;
     profession: string;
     documentType: 'Cédula' | 'Pasaporte';
+    documentType: 'Cédula' | 'Pasaporte';
     idNumber: string;
     idFront: File | null;
     idBack: File | null;
@@ -69,6 +71,7 @@ export interface Partner {
 export interface Manager {
     type: 'Socio' | 'Tercero';
     name: string;
+    documentType: 'Cédula' | 'Pasaporte';
     idNumber: string;
     nationality?: string;
 }
