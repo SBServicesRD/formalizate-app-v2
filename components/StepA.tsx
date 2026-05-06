@@ -439,7 +439,7 @@ const StepA: React.FC<StepAProps> = ({ formData, updateFormData, nextStep, prevS
                 if (!validateRequired(t.surnames)) newErrors[`titular_${i}_surnames`] = 'Apellido requerido';
                 if (!validateRequired(t.idNumber)) newErrors[`titular_${i}_id`] = 'Documento requerido'; else if (t.documentType === 'Cédula' && !validateCedula(t.idNumber)) newErrors[`titular_${i}_id`] = 'Cédula inválida (XXX-XXXXXXX-X)'; else if (t.documentType === 'Pasaporte' && t.idNumber.length > 20) newErrors[`titular_${i}_id`] = 'Máximo 20 caracteres';
                 if (!t.idFront) newErrors[`titular_${i}_front`] = 'Foto frontal requerida';
-                if (!t.idBack) newErrors[`titular_${i}_back`] = 'Foto dorsal requerida';
+                if (t.documentType === 'Cédula' && !t.idBack) newErrors[`titular_${i}_back`] = 'Foto dorsal requerida';
             });
 
             if (formData.titulars.length > 1) {
@@ -990,14 +990,22 @@ const StepA: React.FC<StepAProps> = ({ formData, updateFormData, nextStep, prevS
                                             <div className="flex bg-gray-100 p-1 rounded-lg">
                                                 <button
                                                     type="button"
-                                                    onClick={() => { handleTitularChange(i, 'documentType', 'Cédula'); handleTitularChange(i, 'idNumber', ''); }}
+                                                    onClick={() => { 
+                                                        const newT = [...formData.titulars];
+                                                        newT[i] = { ...newT[i], documentType: 'Cédula', idNumber: '', idBack: null };
+                                                        updateFormData({ titulars: newT });
+                                                    }}
                                                     className={`px-3 py-1.5 text-[10px] font-bold rounded-md transition-all ${t.documentType === 'Cédula' ? 'bg-white text-sbs-blue shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                                                 >
                                                     Cédula
                                                 </button>
                                                 <button
                                                     type="button"
-                                                    onClick={() => { handleTitularChange(i, 'documentType', 'Pasaporte'); handleTitularChange(i, 'idNumber', ''); }}
+                                                    onClick={() => { 
+                                                        const newT = [...formData.titulars];
+                                                        newT[i] = { ...newT[i], documentType: 'Pasaporte', idNumber: '', idBack: null };
+                                                        updateFormData({ titulars: newT });
+                                                    }}
                                                     className={`px-3 py-1.5 text-[10px] font-bold rounded-md transition-all ${t.documentType === 'Pasaporte' ? 'bg-white text-sbs-blue shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                                                 >
                                                     Pasaporte
