@@ -3,17 +3,17 @@ import { ChevronRight, Loader2 } from 'lucide-react';
 import { onAuthStateChanged, User, signOut } from 'firebase/auth';
 import { auth } from './core/services/firebase';
 import LandingPage from './components/LandingPage';
-import StepProgressBar from './components/StepProgressBar';
+import StepProgressBar from './design/components/StepProgressBar';
 import StepTypeSelection from './components/StepTypeSelection';
 import StepA from './components/StepA';
-import PostPaymentWelcome from './components/PostPaymentWelcome';
+import PostPaymentWelcome from './design/components/PostPaymentWelcome';
 import SignupPostPaymentPage from './components/SignupPostPaymentPage';
 import PostPaymentForm from './components/PostPaymentForm';
-import SuccessPage from './components/SuccessPage';
+import SuccessPage from './design/components/SuccessPage';
 import DashboardPage from './components/DashboardPage';
 import LoginPage from './components/LoginPage';
 import Header from './components/Header';
-import Footer from './components/Footer';
+import Footer from './design/components/Footer';
 import WhatsAppWidget from './components/WhatsAppWidget';
 import SummaryPage from './components/SummaryPage';
 import { AppStep, FormData } from './types';
@@ -23,9 +23,9 @@ import StepC from './components/StepC';
 
 const PaymentPage = lazy(() => import('./components/PaymentPage'));
 const SecureDashboard = lazy(() => import('./components/SecureDashboard'));
-const TermsOfServicePage = lazy(() => import('./components/TermsOfServicePage'));
-const PrivacyPolicyPage = lazy(() => import('./components/PrivacyPolicyPage'));
-const RefundPolicyPage = lazy(() => import('./components/RefundPolicyPage'));
+const TermsOfServicePage = lazy(() => import('./design/pages/TermsOfServicePage'));
+const PrivacyPolicyPage = lazy(() => import('./design/pages/PrivacyPolicyPage'));
+const RefundPolicyPage = lazy(() => import('./design/pages/RefundPolicyPage'));
 
 type PageView = 'main' | 'privacy' | 'terms' | 'refund' | 'login';
 

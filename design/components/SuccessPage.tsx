@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
-import { FormData } from '../types';
-import { PACKAGES, PackageName } from '../constants';
-import { calculateICCTax, formatCurrency } from '../core/utils/calculations';
+import { FormData } from '../../types';
+import { PACKAGES, PackageName } from '../../constants';
+import { calculateICCTax, formatCurrency } from '../../core/utils/calculations';
 import { ClipboardCheck } from 'lucide-react';
 
 interface SuccessPageProps {
