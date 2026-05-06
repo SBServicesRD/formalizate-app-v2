@@ -2,7 +2,7 @@
 import React, { useMemo } from 'react';
 import { FormData } from '../types';
 import { PACKAGES } from '../constants';
-import { calculateICCTax, formatCurrency } from '../utils/calculations';
+import { calculateICCTax, formatCurrency } from '../core/utils/calculations';
 import { Building, Users, User, CheckCircle, ArrowRight, ShieldCheck } from 'lucide-react';
 
 interface SummaryPageProps {

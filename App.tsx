@@ -1,7 +1,7 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { ChevronRight, Loader2 } from 'lucide-react';
 import { onAuthStateChanged, User, signOut } from 'firebase/auth';
-import { auth } from './services/firebase';
+import { auth } from './core/services/firebase';
 import LandingPage from './components/LandingPage';
 import StepProgressBar from './components/StepProgressBar';
 import StepTypeSelection from './components/StepTypeSelection';

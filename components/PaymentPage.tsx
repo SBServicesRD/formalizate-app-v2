@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { FormData } from '../types';
 import { PACKAGES, ALLOWED_FILE_TYPES, ORPHAN_SALE_KEY } from '../constants';
-import { calculateICCTax, formatCurrency } from '../utils/calculations';
+import { calculateICCTax, formatCurrency } from '../core/utils/calculations';
 import { Check, CheckCircle, Landmark, CreditCard, ChevronDown, X, Building, Upload, Trash2, Loader2, ChevronLeft } from 'lucide-react';
 import { PayPalScriptProvider, PayPalButtons } from '@paypal/react-paypal-js';
 

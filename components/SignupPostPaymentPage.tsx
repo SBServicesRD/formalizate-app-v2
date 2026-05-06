@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AtSign, Lock, Eye, EyeOff, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
-import { auth } from '../services/firebase';
+import { auth } from '../core/services/firebase';
 import { 
     createUserWithEmailAndPassword,
     AuthError

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { FormData } from '../types';
 import { NCF_OPTIONS, FISCAL_CLOSING_DATE, ALLOWED_FILE_TYPES } from '../constants';
-import { validateRequired, formatPhoneNumber, validateEmail, formatDateMask, validateDate, validatePhoneNumber, sanitizeInput } from '../utils/validation';
-import { saveFullApplication } from '../services/documentService';
+import { validateRequired, formatPhoneNumber, validateEmail, formatDateMask, validateDate, validatePhoneNumber, sanitizeInput } from '../core/utils/validation';
+import { saveFullApplication } from '../core/services/documentService';
 import {
     AlertCircle,
     AlertTriangle,

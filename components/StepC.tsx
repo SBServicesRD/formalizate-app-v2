@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { FormData } from '../types';
-import { validateCedula, validateRequired, formatCedula } from '../utils/validation';
+import { validateCedula, validateRequired, formatCedula } from '../core/utils/validation';
 import { Users, Briefcase, ChevronDown, Clock } from 'lucide-react';
 
 interface StepCProps {

@@ -2,8 +2,8 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { FormData, Partner, MaritalStatus } from '../types';
 import { SHARE_VALUE, PROVINCES, MUNICIPALITIES, COUNTRIES, INTERNATIONAL_REGIONS, ALLOWED_FILE_TYPES, PACKAGES, POSTAL_CODE_CONFIG } from '../constants';
-import { distributeShares, calculateICCTax, formatCurrency } from '../utils/calculations';
-import { validateCedula, validateRequired, formatCedula, formatPhoneNumber, validateEmail, sanitizeInput, validatePhoneNumber, formatDateMask, validateDate, validateBirthDate } from '../utils/validation';
+import { distributeShares, calculateICCTax, formatCurrency } from '../core/utils/calculations';
+import { validateCedula, validateRequired, formatCedula, formatPhoneNumber, validateEmail, sanitizeInput, validatePhoneNumber, formatDateMask, validateDate, validateBirthDate } from '../core/utils/validation';
 import { HelpCircle, Check, Trash2, ChevronDown, Image, IdCard, FileSignature } from 'lucide-react';
 
 interface StepBProps {

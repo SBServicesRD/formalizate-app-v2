@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { FormData, Titular, Partner } from '../types';
-import { validateEmail, validateRequired, validateCedula, formatCedula, formatPhoneNumber, sanitizeInput, sanitizeCompanyName, validatePhoneNumber } from '../utils/validation';
+import { validateEmail, validateRequired, validateCedula, formatCedula, formatPhoneNumber, sanitizeInput, sanitizeCompanyName, validatePhoneNumber } from '../core/utils/validation';
 import { PROVINCES, MUNICIPALITIES, PACKAGES, PackageName, ALLOWED_FILE_TYPES } from '../constants';
 import { HelpCircle, Check, Trash2, CloudUpload, Camera, User, Loader2, CheckCircle, Sparkles } from 'lucide-react';
 

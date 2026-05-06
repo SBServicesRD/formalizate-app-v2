@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AtSign, Lock, Eye, EyeOff, Loader2, AlertCircle } from 'lucide-react';
-import { auth, googleProvider } from '../services/firebase';
+import { auth, googleProvider } from '../core/services/firebase';
 import { 
     signInWithPopup, 
     signInWithEmailAndPassword,

@@ -1,5 +1,5 @@
-import { TAX_EXEMPTION_LIMIT, TAX_RATE_PER_BLOCK, SHARE_VALUE } from '../constants';
-import { FormData } from '../types';
+import { TAX_EXEMPTION_LIMIT, TAX_RATE_PER_BLOCK, SHARE_VALUE } from '../../constants';
+import { FormData } from '../../types';
 
 export const calculateICCTax = (capital: number): number => {
     if (!capital || capital <= TAX_EXEMPTION_LIMIT) return 0;

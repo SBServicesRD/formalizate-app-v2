@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { FormData } from '../types';
-import { formatCurrency } from '../utils/calculations';
+import { formatCurrency } from '../core/utils/calculations';
 import { FileText, Lock, Check, Download, Clock, Building, User, LifeBuoy, Send, LogOut, ChevronDown } from 'lucide-react';
 
 interface DashboardPageProps {
