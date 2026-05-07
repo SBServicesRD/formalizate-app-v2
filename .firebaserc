@@ -1,6 +1,14 @@
 {
   "projects": {
     "default": "sbservicesrd"
+  },
+  "targets": {
+    "sbservicesrd": {
+      "hosting": {
+        "customers-dashboard": ["formalizate-dash"],
+        "investors-dashboard": ["formalizate-investors"],
+        "admin-dashboard": ["formalizate-admin"]
+      }
+    }
   }
 }
-

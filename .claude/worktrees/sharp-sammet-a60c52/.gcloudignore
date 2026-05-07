@@ -1,0 +1,9 @@
+# Archivos y carpetas ignorados por Google Cloud
+node_modules/
+.cursor/
+.git/
+.gitignore
+.env 
+env.yaml
+build.env.yaml
+runtime.env.yaml

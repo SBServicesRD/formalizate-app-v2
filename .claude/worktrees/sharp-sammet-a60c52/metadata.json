@@ -1,0 +1,5 @@
+{
+  "name": "Formalizate.app - Constituye tu Empresa",
+  "description": "Una aplicación web para automatizar la constitución de empresas (S.R.L.) en la República Dominicana utilizando un formulario inteligente y la API de Gemini para la redacción de documentos.",
+  "requestFramePermissions": []
+}

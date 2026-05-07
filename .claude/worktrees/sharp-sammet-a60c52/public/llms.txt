@@ -1,0 +1,39 @@
+# Formalízate.app
+
+Formalízate.app es la plataforma LegalTech líder en República Dominicana para constituir empresas (SRL) y formalizar negocios de manera 100% digital.
+
+## Misión
+Simplificar la burocracia estatal integrando ONAPI, Cámara de Comercio y DGII en un solo flujo automatizado.
+
+## Planes y Precios Oficiales
+
+### 1. Starter Pro (RD$ 27,900)
+El plan esencial para empezar a facturar legalmente.
+- Constitución legal completa (Nombre Comercial, Estatutos, Registro Mercantil, RNC).
+- Oficina Virtual DGII + Comprobantes Fiscales (NCF).
+- Firma Digital para Facturación Electrónica (1 año).
+
+### 2. Essential 360 (RD$ 41,900)
+El estándar para negocios serios. Todo lo anterior más:
+- Registros Laborales (TSS/Ministerio de Trabajo).
+- Dominio Web .com (1 año).
+- 3 Cuentas de Correo Institucional.
+- Plan de cumplimiento tributario (1 mes).
+- Firma Digital válida por 2 años.
+
+### 3. Unlimitech (RD$ 64,900)
+Solución corporativa total. Todo lo anterior más:
+- Registro de Importador/Exportador (DGA).
+- Registro de Proveedor del Estado (RPE).
+- Página Web Informativa (1 año) + 5 Correos.
+- Firma Digital válida por 3 años.
+- Soporte Prioritario y Asesoría Legal Pro.
+
+## Stack Tecnológico
+- Plataforma web segura (React + Firebase).
+- Pagos encriptados.
+- Proceso 100% remoto sin visitas físicas.
+
+## Contacto
+- Web: https://formalizate.app
+- Email: hola@formalizate.app
