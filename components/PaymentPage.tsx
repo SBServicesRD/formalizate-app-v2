@@ -68,7 +68,7 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onP
     const [isDragging, setIsDragging] = useState(false);
     
     // Estado para expandir lista de beneficios
-    const [showAllFeatures, setShowAllFeatures] = useState(false);
+    const [showAllFeatures, setShowAllFeatures] = useState(true);
     
     // Estado para la tasa de cambio dinámica
     const [exchangeRate, setExchangeRate] = useState<number>(0);

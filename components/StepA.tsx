@@ -1029,8 +1029,14 @@ const StepA: React.FC<StepAProps> = ({ formData, updateFormData, nextStep, prevS
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                                {/* Front ID */}
+                            {/* Photo upload — 1 foto si pasaporte, 2 si cédula (igual que StepB) */}
+                            <p className="text-xs text-gray-400 mb-3">
+                                {t.documentType === 'Pasaporte'
+                                    ? 'Sube una foto clara de la página de datos del Pasaporte.'
+                                    : 'Sube ambas caras de la Cédula.'}
+                            </p>
+                            <div className={`grid grid-cols-1 ${t.documentType !== 'Pasaporte' ? 'md:grid-cols-2' : ''} gap-5`}>
+                                {/* Front / Passport page */}
                                 <div>
                                     {uploadProgress[`titular_${i}_idFront`] ? (
                                         <UploadProgress progress={uploadProgress[`titular_${i}_idFront`]} />
@@ -1042,7 +1048,9 @@ const StepA: React.FC<StepAProps> = ({ formData, updateFormData, nextStep, prevS
                                             <input type="file" className="hidden" accept={ALLOWED_FILE_TYPES} onChange={(e) => e.target.files && handleFileUpload(`titular_${i}_idFront`, e.target.files[0], (file) => handleTitularChange(i, 'idFront', file))} />
                                             <div className="text-center text-gray-400 group-hover:text-sbs-blue transition-colors">
                                                 <Camera className="w-10 h-10 mx-auto mb-3" strokeWidth={1.5} />
-                                                <span className="text-sm font-bold uppercase tracking-wide block">Arrastra tu ID aquí (Frente)</span>
+                                                <span className="text-sm font-bold uppercase tracking-wide block">
+                                                    {t.documentType === 'Pasaporte' ? 'Página de Datos del Pasaporte' : 'Cédula (Frente)'}
+                                                </span>
                                                 <span className="text-[10px] opacity-70">o haz click para buscar</span>
                                             </div>
                                         </label>
@@ -1052,27 +1060,29 @@ const StepA: React.FC<StepAProps> = ({ formData, updateFormData, nextStep, prevS
                                     {isError(errFront) && <p className="text-red-500 text-xs mt-2 ml-1 font-bold">{errors[errFront]}</p>}
                                 </div>
 
-                                {/* Back ID */}
-                                <div>
-                                    {uploadProgress[`titular_${i}_idBack`] ? (
-                                        <UploadProgress progress={uploadProgress[`titular_${i}_idBack`]} />
-                                    ) : !t.idBack ? (
-                                        <label className={`flex flex-col items-center justify-center h-40 border-2 border-dashed rounded-xl cursor-pointer transition-all bg-white group hover:shadow-lg ${isError(errBack) ? 'border-red-300 bg-red-50' : 'border-gray-300 hover:border-sbs-blue hover:bg-blue-50/50'}`}
-                                            onDragOver={handleDragOver}
-                                            onDrop={(e) => handleDrop(e, `titular_${i}_idBack`, (file) => handleTitularChange(i, 'idBack', file))}
-                                        >
-                                            <input type="file" className="hidden" accept={ALLOWED_FILE_TYPES} onChange={(e) => e.target.files && handleFileUpload(`titular_${i}_idBack`, e.target.files[0], (file) => handleTitularChange(i, 'idBack', file))} />
-                                            <div className="text-center text-gray-400 group-hover:text-sbs-blue transition-colors">
-                                                <Camera className="w-10 h-10 mx-auto mb-3" strokeWidth={1.5} />
-                                                <span className="text-sm font-bold uppercase tracking-wide block">Arrastra tu ID aquí (Dorso)</span>
-                                                <span className="text-[10px] opacity-70">o haz click para buscar</span>
-                                            </div>
-                                        </label>
-                                    ) : (
-                                        <FilePreview file={t.idBack} onRemove={() => removeFile(i, 'idBack')} />
-                                    )}
-                                     {isError(errBack) && <p className="text-red-500 text-xs mt-2 ml-1 font-bold">{errors[errBack]}</p>}
-                                </div>
+                                {/* Back — HIDDEN IF PASSPORT (same logic as StepB) */}
+                                {t.documentType !== 'Pasaporte' && (
+                                    <div>
+                                        {uploadProgress[`titular_${i}_idBack`] ? (
+                                            <UploadProgress progress={uploadProgress[`titular_${i}_idBack`]} />
+                                        ) : !t.idBack ? (
+                                            <label className={`flex flex-col items-center justify-center h-40 border-2 border-dashed rounded-xl cursor-pointer transition-all bg-white group hover:shadow-lg ${isError(errBack) ? 'border-red-300 bg-red-50' : 'border-gray-300 hover:border-sbs-blue hover:bg-blue-50/50'}`}
+                                                onDragOver={handleDragOver}
+                                                onDrop={(e) => handleDrop(e, `titular_${i}_idBack`, (file) => handleTitularChange(i, 'idBack', file))}
+                                            >
+                                                <input type="file" className="hidden" accept={ALLOWED_FILE_TYPES} onChange={(e) => e.target.files && handleFileUpload(`titular_${i}_idBack`, e.target.files[0], (file) => handleTitularChange(i, 'idBack', file))} />
+                                                <div className="text-center text-gray-400 group-hover:text-sbs-blue transition-colors">
+                                                    <Camera className="w-10 h-10 mx-auto mb-3" strokeWidth={1.5} />
+                                                    <span className="text-sm font-bold uppercase tracking-wide block">Cédula (Dorso)</span>
+                                                    <span className="text-[10px] opacity-70">o haz click para buscar</span>
+                                                </div>
+                                            </label>
+                                        ) : (
+                                            <FilePreview file={t.idBack} onRemove={() => removeFile(i, 'idBack')} />
+                                        )}
+                                        {isError(errBack) && <p className="text-red-500 text-xs mt-2 ml-1 font-bold">{errors[errBack]}</p>}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )})}

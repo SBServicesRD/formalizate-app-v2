@@ -161,7 +161,7 @@ function hashPin(pin) {
 // TEMPLATES DE EMAIL
 // ============================================================
 function getTemplate(type, data) {
-  const { nombre, plan, monto, orderId, dashboardUrl, dashboardPin } = data;
+  const { nombre, plan, monto, orderId, dashboardUrl, dashboardPin, hitoLabel } = data;
   const styles = {
     container: "font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;",
     header: "background-color: #1D3557; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0;",
@@ -216,6 +216,10 @@ function getTemplate(type, data) {
     completado: {
       subject: "🎉 ¡Tu Empresa está Lista!",
       html: `<div style="${styles.container}"><div style="${styles.header}"><h2>¡Misión Cumplida!</h2></div><div style="padding: 20px; border: 1px solid #ddd;"><p>Felicidades, <strong>${nombre}</strong>.</p><p>El proceso ha finalizado. Descarga tu RNC y Registro Mercantil.</p><center><a href="${dashboardUrl || "#"}" style="${styles.btn}">Descargar Todo</a></center></div></div>`,
+    },
+    hito_listo: {
+      subject: `✅ Actualización: ${hitoLabel || "Nuevo hito completado"}`,
+      html: `<div style="${styles.container}"><div style="${styles.header}"><h2>✅ Actualización de Expediente</h2></div>${commonBody}<div style="background-color: #e8f5e9; padding: 15px; border-radius: 5px; color: #2e7d32; margin-bottom: 16px;"><strong>${hitoLabel || "Hito completado"}</strong></div><p style="color:#555;">Continuamos avanzando con tu expediente. Te notificaremos en cada etapa.</p><center><a href="${dashboardUrl || "#"}" style="${styles.btnBlue}">Ver Estado de mi Expediente</a></center>${dashboardSection}</div></div>`,
     },
   };
 
@@ -307,6 +311,20 @@ exports.onVentaCreate = onDocumentCreated(
 );
 
 // ============================================================
+// MAPA DE HITOS — para emails de progreso personalizados
+// ============================================================
+const HITO_LABELS = {
+  estatutos_listos:  "Estatutos Sociales Listos",
+  mercantil_listo:   "Registro Mercantil Completado",
+  rnc_listo:         "RNC Asignado (DGII)",
+  tss_listo:         "Registro TSS / MIT Completado",
+  firma_lista:       "Firma Digital Lista",
+  dominio_listo:     "Dominio + Correos Activos",
+  dga_listo:         "Registro DGA Completado",
+  proveedor_listo:   "Registro Proveedor del Estado Completado",
+};
+
+// ============================================================
 // FIRESTORE TRIGGER: VENTA ACTUALIZADA
 // ============================================================
 exports.onVentaUpdate = onDocumentUpdated(
@@ -328,20 +346,33 @@ exports.onVentaUpdate = onDocumentUpdated(
     const payStatusOld = before.paymentStatus;
 
     let templateType = null;
-    if (payStatusOld !== "paid" && (payStatusNew === "paid" || payStatusNew === "validated")) {
+    let hitoLabel    = null;
+
+    // 1. Pago validado manualmente (transferencia bancaria verificada)
+    if (payStatusChanged && payStatusNew === "validated") {
       templateType = "transferencia_validada";
-    } else if (statusNew === "pagado")           templateType = "transferencia_validada";
-    else if (statusNew === "onapi_listo")         templateType = "onapi_listo";
-    else if (statusNew === "completado")          templateType = "completado";
-    // Nuevos estados (Essential 360 / Unlimitech):
-    else if (statusNew === "estatutos_listos")    templateType = "onapi_listo";   // reusar template genérico
-    else if (statusNew === "mercantil_listo")     templateType = "onapi_listo";
-    else if (statusNew === "rnc_listo")           templateType = "onapi_listo";
-    else if (statusNew === "tss_listo")           templateType = "onapi_listo";
-    else if (statusNew === "firma_lista")         templateType = "onapi_listo";
-    else if (statusNew === "dominio_listo")       templateType = "onapi_listo";
-    else if (statusNew === "dga_listo")           templateType = "onapi_listo";
-    else if (statusNew === "proveedor_listo")     templateType = "onapi_listo";
+
+    // 2. Pago confirmado (cualquier método)
+    } else if (payStatusChanged && payStatusOld !== "paid" && payStatusNew === "paid") {
+      templateType = "pago_exitoso";
+
+    // 3. Admin marcó "Pago confirmado" (status + paymentStatus en una sola escritura)
+    } else if (statusNew === "pagado") {
+      templateType = "pago_exitoso";
+
+    // 4. ONAPI aprobado
+    } else if (statusNew === "onapi_listo") {
+      templateType = "onapi_listo";
+
+    // 5. Proceso completado
+    } else if (statusNew === "completado") {
+      templateType = "completado";
+
+    // 6. Hitos intermedios — cada uno con su propio label
+    } else if (HITO_LABELS[statusNew]) {
+      templateType = "hito_listo";
+      hitoLabel    = HITO_LABELS[statusNew];
+    }
 
     if (!templateType) return null;
 
@@ -359,7 +390,7 @@ exports.onVentaUpdate = onDocumentUpdated(
     const dashboardUrl = after.dashboardLink || `${CUSTOMER_DASHBOARD_URL}`;
 
     if (email) {
-      const template = getTemplate(templateType, { nombre, plan, monto, orderId, dashboardUrl });
+      const template = getTemplate(templateType, { nombre, plan, monto, orderId, dashboardUrl, hitoLabel });
       if (template) {
         await sendEmail({ to: email, subject: template.subject, html: template.html });
       }
