@@ -387,7 +387,19 @@ exports.onVentaUpdate = onDocumentUpdated(
     const orderId = after.orderId || event.params.ventaId;
     const plan = after.plan || after.packageName;
     const monto = getPrecio(plan, after.monto || after.totalAmount);
-    const dashboardUrl = after.dashboardLink || `${CUSTOMER_DASHBOARD_URL}`;
+
+    // Regenerate a fresh customer token so the email button always works.
+    // after.dashboardLink is never persisted to Firestore, so we can't rely on it.
+    const firestoreId = after.firestoreId || event.params.ventaId;
+    const customerSecret = process.env.CUSTOMER_MAGIC_SECRET;
+    let dashboardUrl = CUSTOMER_DASHBOARD_URL;
+    if (customerSecret && firestoreId) {
+      const dashboardToken = signToken(
+        { saleId: firestoreId, role: "customer", issuedAt: Math.floor(Date.now() / 1000) },
+        customerSecret
+      );
+      dashboardUrl = `${CUSTOMER_DASHBOARD_URL}/?token=${dashboardToken}`;
+    }
 
     if (email) {
       const template = getTemplate(templateType, { nombre, plan, monto, orderId, dashboardUrl, hitoLabel });
