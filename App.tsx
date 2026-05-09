@@ -13,12 +13,36 @@ import DashboardPage from './components/DashboardPage';
 import LoginPage from './components/LoginPage';
 import Header from './components/Header';
 import Footer from './components/Footer';
-import WhatsAppWidget from './components/WhatsAppWidget';
 import SummaryPage from './components/SummaryPage';
 import { AppStep, FormData } from './types';
-import { MANAGEMENT_DURATION, FISCAL_CLOSING_DATE, PackageName } from './constants';
+import { MANAGEMENT_DURATION, FISCAL_CLOSING_DATE, PackageName, PACKAGES } from './constants';
 import StepB from './components/StepB';
 import StepC from './components/StepC';
+
+// Mapping from URL slug -> PackageName key used in PACKAGES.
+// Slugs match those defined in the landing (formalizate-landing/src/pages/index.astro).
+const PLAN_SLUG_TO_PACKAGE: Record<string, PackageName> = {
+    'starter-pro': 'Starter Pro',
+    'essential-360': 'Essential 360',
+    'unlimitech': 'Unlimitech',
+};
+
+const resolvePlanFromUrl = (): PackageName | null => {
+    if (typeof window === 'undefined') return null;
+    try {
+        const raw = new URLSearchParams(window.location.search).get('plan');
+        if (!raw) return null;
+        const slugMatch = PLAN_SLUG_TO_PACKAGE[raw.toLowerCase().trim()];
+        if (slugMatch) return slugMatch;
+        // Also accept the raw PackageName (URL-decoded) for flexibility.
+        if ((Object.keys(PACKAGES) as PackageName[]).includes(raw as PackageName)) {
+            return raw as PackageName;
+        }
+    } catch {
+        return null;
+    }
+    return null;
+};
 
 const PaymentPage = lazy(() => import('./components/PaymentPage'));
 const SecureDashboard = lazy(() => import('./components/SecureDashboard'));
@@ -140,6 +164,16 @@ const App: React.FC = () => {
     }, []);
 
     const isAuthenticated = !!user;
+
+    // Pre-select package from URL query param (e.g. landing CTA -> /?plan=essential-360).
+    // Runs once at mount; overrides any persisted packageName so the user lands on the
+    // wizard with the plan they just clicked. Invalid/missing param = normal behavior.
+    useEffect(() => {
+        const planFromUrl = resolvePlanFromUrl();
+        if (planFromUrl) {
+            setFormData(prev => ({ ...prev, packageName: planFromUrl }));
+        }
+    }, []);
 
     useEffect(() => {
         if (isAuthenticated && page === 'login') {
@@ -478,7 +512,6 @@ const App: React.FC = () => {
             <div>
                 {renderPageContent()}
             </div>
-            <WhatsAppWidget />
             <Footer setPage={setPage} />
         </div>
     );
