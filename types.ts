@@ -1,7 +1,6 @@
 import { PackageName } from './constants';
 
 export enum AppStep {
-    Landing,
     StepTypeSelection,
     StepA,
     StepB,

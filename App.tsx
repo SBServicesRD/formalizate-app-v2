@@ -2,7 +2,6 @@ import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { ChevronRight, Loader2 } from 'lucide-react';
 import { onAuthStateChanged, User, signOut } from 'firebase/auth';
 import { auth } from './services/firebase';
-import LandingPage from './components/LandingPage';
 import StepProgressBar from './components/StepProgressBar';
 import StepTypeSelection from './components/StepTypeSelection';
 import StepA from './components/StepA';
@@ -36,24 +35,24 @@ const LoadingFallback = () => (
     </div>
 );
 
-// SECURITY: Version bump to invalidate potential corrupted old states
+// Version bump v8: invalidates stored states from v7 (Landing step removed from enum)
 const getLocalStorageKey = (userId: string | null): string => {
     if (userId) {
-        return `sbs_form_v7_user_${userId}`;
+        return `sbs_form_v8_user_${userId}`;
     }
-    return 'sbs_form_v7_guest';
+    return 'sbs_form_v8_guest';
 };
 
 const App: React.FC = () => {
     const initialFormState: FormData = {
         companyType: 'SRL',
-        
+
         hasRegisteredName: 'No',
         nameOwnership: 'Un solo socio',
 
         companyName: '',
         socialObject: '',
-        
+
         companyStreet: '',
         companyStreetNumber: '',
         companySector: '',
@@ -67,7 +66,7 @@ const App: React.FC = () => {
             phone: '',
             isTitular: false
         },
-        
+
         titulars: [],
 
         fiscalClosing: FISCAL_CLOSING_DATE,
@@ -78,7 +77,7 @@ const App: React.FC = () => {
         packageName: 'Essential 360',
         paymentStatus: 'unpaid',
         paymentMethod: 'other',
-        
+
         ncfTypes: [],
     };
 
@@ -88,7 +87,7 @@ const App: React.FC = () => {
             const saved = localStorage.getItem(storageKey);
             if (saved) {
                 const parsed = JSON.parse(saved);
-                
+
                 if (parsed.formData) {
                     if (parsed.formData.titulars) {
                         parsed.formData.titulars = parsed.formData.titulars.map((t: any) => ({
@@ -97,7 +96,7 @@ const App: React.FC = () => {
                             idBack: null
                         }));
                     }
-                    
+
                     if (parsed.formData.partners) {
                         parsed.formData.partners = parsed.formData.partners.map((p: any) => ({
                             ...p,
@@ -118,10 +117,10 @@ const App: React.FC = () => {
         return null;
     };
 
-    const [currentStep, setCurrentStep] = useState<AppStep>(AppStep.Landing);
-    const [highestStepReached, setHighestStepReached] = useState<AppStep>(AppStep.Landing);
+    const [currentStep, setCurrentStep] = useState<AppStep>(AppStep.StepTypeSelection);
+    const [highestStepReached, setHighestStepReached] = useState<AppStep>(AppStep.StepTypeSelection);
     const [formData, setFormData] = useState<FormData>(initialFormState);
-    
+
     const [page, setPage] = useState<PageView>('main');
     const [user, setUser] = useState<User | null>(null);
     const [authLoading, setAuthLoading] = useState(true);
@@ -152,7 +151,7 @@ const App: React.FC = () => {
     useEffect(() => {
         if (!authLoading && !isAuthenticated && currentStep === AppStep.Dashboard) {
             setPage('login');
-            setStep(AppStep.Landing);
+            setStep(AppStep.StepTypeSelection);
         }
     }, [isAuthenticated, authLoading, currentStep]);
 
@@ -184,11 +183,6 @@ const App: React.FC = () => {
             setHighestStepReached(step);
         }
     };
-    
-    const handleStartFlow = (selectedPackage: PackageName) => {
-        updateFormData({ packageName: selectedPackage });
-        setStep(AppStep.StepTypeSelection);
-    };
 
     const goToNextStep = () => {
         if (currentStep === AppStep.StepA) {
@@ -216,7 +210,7 @@ const App: React.FC = () => {
     };
 
     const goToPrevStep = () => {
-        if (currentStep > AppStep.Landing) {
+        if (currentStep > AppStep.StepTypeSelection) {
             if (currentStep === AppStep.Payment) {
                 setStep(AppStep.Summary);
                 return;
@@ -233,7 +227,7 @@ const App: React.FC = () => {
             setStep(prevStep);
         }
     };
-    
+
     const goToStep = (step: AppStep) => {
         if (step <= highestStepReached) {
             if (step === AppStep.StepC) return;
@@ -257,7 +251,7 @@ const App: React.FC = () => {
             if (auth) {
                 await signOut(auth);
             }
-            setStep(AppStep.Landing);
+            setStep(AppStep.StepTypeSelection);
             setPage('main');
         } catch (error) {
             console.error('Error al cerrar sesión:', error);
@@ -274,7 +268,7 @@ const App: React.FC = () => {
             console.error("ERROR AL FINALIZAR LA SOLICITUD:", error);
         }
     }
-    
+
     const goToDashboard = () => {
         if (!isAuthenticated) {
             setPage('login');
@@ -305,8 +299,6 @@ const App: React.FC = () => {
         }
 
         switch (currentStep) {
-            case AppStep.Landing:
-                return <LandingPage onStart={handleStartFlow} />;
             case AppStep.StepTypeSelection:
                 return <StepTypeSelection formData={formData} updateFormData={updateFormData} nextStep={goToNextStep} />;
             case AppStep.StepA:
@@ -346,7 +338,7 @@ const App: React.FC = () => {
                     </Suspense>
                 );
             default:
-                return <LandingPage onStart={handleStartFlow} />;
+                return <StepTypeSelection formData={formData} updateFormData={updateFormData} nextStep={goToNextStep} />;
         }
     };
 
@@ -361,25 +353,25 @@ const App: React.FC = () => {
         }
 
         switch (page) {
-            case 'privacy': 
+            case 'privacy':
                 return (
                     <Suspense fallback={<LoadingFallback />}>
                         <PrivacyPolicyPage />
                     </Suspense>
                 );
-            case 'terms': 
+            case 'terms':
                 return (
                     <Suspense fallback={<LoadingFallback />}>
                         <TermsOfServicePage />
                     </Suspense>
                 );
-            case 'refund': 
+            case 'refund':
                 return (
                     <Suspense fallback={<LoadingFallback />}>
                         <RefundPolicyPage />
                     </Suspense>
                 );
-            case 'login': 
+            case 'login':
                 if (isAuthenticated) {
                     setStep(AppStep.Dashboard);
                     setPage('main');
@@ -392,9 +384,6 @@ const App: React.FC = () => {
                 );
             case 'main':
             default:
-                if (currentStep === AppStep.Landing) {
-                    return <LandingPage onStart={handleStartFlow} />;
-                }
                 if (currentStep === AppStep.Dashboard) {
                     if (!isAuthenticated) {
                         setPage('login');
@@ -402,7 +391,7 @@ const App: React.FC = () => {
                     }
                     if (!isPaymentVerified) {
                         setStep(AppStep.Payment);
-                        return null; 
+                        return null;
                     }
                     return (
                         <Suspense fallback={<LoadingFallback />}>
@@ -420,23 +409,15 @@ const App: React.FC = () => {
                 return (
                     <div className="min-h-screen flex flex-col items-center pt-32 pb-24 relative bg-premium-bg">
                         <div className="absolute top-0 left-0 w-full h-[500px] bg-gradient-to-b from-premium-surface-subtle to-transparent pointer-events-none z-0" />
-                        
+
                         <main className="w-full max-w-5xl bg-white shadow-premium border border-premium-border p-8 sm:p-16 rounded-[2.5rem] relative z-10 mx-4 animate-fade-in-up">
                              {currentStep >= AppStep.StepTypeSelection && (
                                 <nav className="mb-8 flex" aria-label="Breadcrumb">
                                     <ol className="inline-flex items-center space-x-1 md:space-x-3 text-xs font-medium text-gray-400">
                                         <li className="inline-flex items-center">
-                                            <a href="#" onClick={(e) => {e.preventDefault(); setStep(AppStep.Landing); setTimeout(() => window.scrollTo(0,0), 100); }} className="hover:text-sbs-blue transition-colors">
+                                            <a href="#" onClick={(e) => {e.preventDefault(); setStep(AppStep.StepTypeSelection); setTimeout(() => window.scrollTo(0,0), 100); }} className="hover:text-sbs-blue transition-colors">
                                                 Inicio
                                             </a>
-                                        </li>
-                                        <li>
-                                            <div className="flex items-center">
-                                                <ChevronRight className="w-3 h-3 text-gray-300 mx-1" />
-                                                <a href="#" onClick={(e) => {e.preventDefault(); setStep(AppStep.Landing); setTimeout(() => { const el = document.getElementById('servicios'); if(el) el.scrollIntoView(); }, 100); }} className="ml-1 hover:text-sbs-blue transition-colors">
-                                                    Planes
-                                                </a>
-                                            </div>
                                         </li>
                                         {currentStep >= AppStep.StepTypeSelection && (
                                             <li>
@@ -472,7 +453,7 @@ const App: React.FC = () => {
                                 </nav>
                              )}
 
-                            {currentStep >= AppStep.StepTypeSelection && currentStep < AppStep.Login && 
+                            {currentStep >= AppStep.StepTypeSelection && currentStep < AppStep.Login &&
                                 <StepProgressBar currentStep={currentStep} highestStepReached={highestStepReached} goToStep={goToStep} />
                             }
                             {renderFormStep()}
@@ -482,24 +463,19 @@ const App: React.FC = () => {
         }
     }
 
-    const dummyStart = () => handleStartFlow('Essential 360');
-    
-    const isLandingPage = currentStep === AppStep.Landing && page === 'main';
     const isDashboard = currentStep === AppStep.Dashboard;
     const isLegalPage = page !== 'main';
 
     return (
         <div className="bg-premium-bg min-h-screen text-text-primary font-sans selection:bg-sbs-blue selection:text-white">
-            <Header 
-                isLanding={isLandingPage} 
-                showSaveExit={!isLandingPage && !isDashboard && !isLegalPage}
+            <Header
+                showSaveExit={!isDashboard && !isLegalPage}
                 isDashboard={isDashboard}
                 isLegal={isLegalPage}
-                onStart={dummyStart} 
-                setPage={setPage} 
-                onExit={() => setStep(AppStep.Landing)}
+                setPage={setPage}
+                onExit={() => setStep(AppStep.StepTypeSelection)}
             />
-            <div className={`${isLandingPage ? '' : 'pt-0'}`}>
+            <div>
                 {renderPageContent()}
             </div>
             <WhatsAppWidget />
@@ -509,4 +485,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-
