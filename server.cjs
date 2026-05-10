@@ -46,8 +46,6 @@ const RATE_LIMIT_CONFIG = {
 };
 
 // --- API KEYS ---
-const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || '';
-const GOOGLE_PLACE_ID = process.env.GOOGLE_PLACE_ID || '';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 
 // --- CONFIGURACIÓN DEL SERVIDOR ---
@@ -445,115 +443,6 @@ Responde ÚNICAMENTE con el objeto social redactado, sin títulos ni explicacion
       optimizedText: safeText,
       error: error.message 
     });
-  }
-});
-
-// ============================================
-// API PARA OBTENER RESEÑAS DE GOOGLE BUSINESS
-// Places API (New) - https://developers.google.com/maps/documentation/places/web-service/op-overview
-// ============================================
-
-/**
- * Formatea una fecha ISO a formato legible en español
- * Ej: "2024-01-15T10:30:00Z" -> "hace 3 meses"
- */
-function formatRelativeTime(isoDateString) {
-  try {
-    const date = new Date(isoDateString);
-    const now = new Date();
-    const diffMs = now - date;
-    const diffSeconds = Math.floor(diffMs / 1000);
-    const diffMinutes = Math.floor(diffSeconds / 60);
-    const diffHours = Math.floor(diffMinutes / 60);
-    const diffDays = Math.floor(diffHours / 24);
-    const diffWeeks = Math.floor(diffDays / 7);
-    const diffMonths = Math.floor(diffDays / 30);
-    const diffYears = Math.floor(diffDays / 365);
-
-    if (diffYears > 0) {
-      return diffYears === 1 ? 'hace 1 año' : `hace ${diffYears} años`;
-    } else if (diffMonths > 0) {
-      return diffMonths === 1 ? 'hace 1 mes' : `hace ${diffMonths} meses`;
-    } else if (diffWeeks > 0) {
-      return diffWeeks === 1 ? 'hace 1 semana' : `hace ${diffWeeks} semanas`;
-    } else if (diffDays > 0) {
-      return diffDays === 1 ? 'hace 1 día' : `hace ${diffDays} días`;
-    } else if (diffHours > 0) {
-      return diffHours === 1 ? 'hace 1 hora' : `hace ${diffHours} horas`;
-    } else if (diffMinutes > 0) {
-      return diffMinutes === 1 ? 'hace 1 minuto' : `hace ${diffMinutes} minutos`;
-    } else {
-      return 'hace un momento';
-    }
-  } catch {
-    return 'fecha desconocida';
-  }
-}
-
-app.get('/api/reviews', async (req, res) => {
-  try {
-    // Validar que las credenciales estén configuradas
-    if (!GOOGLE_API_KEY || GOOGLE_API_KEY === '' || !GOOGLE_PLACE_ID || GOOGLE_PLACE_ID === '') {
-      console.warn('⚠️ Google API Key o Place ID no configurados. Devolviendo array vacío.');
-      return res.json({ reviews: [], source: 'not_configured' });
-    }
-
-    // Places API (New) - URL base sin API Key en query params
-    const url = `https://places.googleapis.com/v1/places/${GOOGLE_PLACE_ID}`;
-    
-    // Headers requeridos por Places API (New)
-    const headers = {
-      'X-Goog-Api-Key': GOOGLE_API_KEY,
-      'X-Goog-FieldMask': 'reviews.rating,reviews.text,reviews.authorAttribution,reviews.publishTime',
-      'Accept-Language': 'es'
-    };
-
-    const response = await fetch(url, { 
-      method: 'GET',
-      headers 
-    });
-
-    // Verificar respuesta HTTP
-    if (!response.ok) {
-      const errorBody = await response.text();
-      console.error('❌ Google Places API (New) HTTP Error:', response.status, errorBody);
-      return res.json({ reviews: [], source: 'api_error', error: `HTTP ${response.status}` });
-    }
-
-    const data = await response.json();
-
-    // Verificar si hay error en el cuerpo de la respuesta
-    if (data.error) {
-      console.error('❌ Google Places API (New) Error:', data.error.message || data.error);
-      return res.json({ reviews: [], source: 'api_error', error: data.error.message || 'Unknown error' });
-    }
-
-    // Mapear respuesta de la API nueva al formato plano que espera el Frontend
-    // Estructura nueva: reviews[].authorAttribution.displayName, .photoUri, etc.
-    // Estructura esperada por frontend: author_name, profile_photo_url, rating, text, relative_time_description
-    const reviews = (data.reviews || []).map(review => {
-      const authorName = review.authorAttribution?.displayName || 'Usuario anónimo';
-      // Generar avatar con iniciales (las fotos de Google no son accesibles públicamente en la nueva API)
-      const profilePhoto = `https://ui-avatars.com/api/?name=${encodeURIComponent(authorName)}&background=0D8ABC&color=fff&size=128&bold=true`;
-      
-      return {
-        author_name: authorName,
-        profile_photo_url: profilePhoto,
-        rating: review.rating || 0,
-        text: review.text?.text || '',
-        relative_time_description: review.publishTime 
-          ? formatRelativeTime(review.publishTime) 
-          : 'fecha desconocida'
-      };
-    });
-
-    console.log(`✅ Obtenidas ${reviews.length} reseñas de Google Places API (New)`);
-    res.json({ reviews, source: 'google' });
-
-  } catch (error) {
-    console.error('❌ Error fetching Google reviews:', error);
-    // Devolver array vacío para no romper la UI
-    return res.json({ reviews: [], source: 'server_error', error: error.message });
   }
 });
 
