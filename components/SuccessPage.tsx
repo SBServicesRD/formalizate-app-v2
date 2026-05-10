@@ -2,9 +2,7 @@ import React from 'react';
 import { FormData } from '../types';
 import { PACKAGES, PackageName } from '../constants';
 import { calculateICCTax, formatCurrency } from '../utils/calculations';
-import { CheckCircle2, Mail, ArrowUpRight, KeyRound } from 'lucide-react';
-
-const CUSTOMER_DASHBOARD_URL = 'https://formalizate-dash.web.app';
+import { CheckCircle2, Mail, KeyRound } from 'lucide-react';
 
 interface SuccessPageProps {
     formData: FormData;
@@ -120,22 +118,6 @@ const SuccessPage: React.FC<SuccessPageProps> = ({ formData }) => {
                         </span>
                     </li>
                 </ol>
-            </div>
-
-            {/* ── CTA ──────────────────────────────────────────── */}
-            <div className="text-center space-y-3 max-w-2xl mx-auto">
-                <a
-                    href={CUSTOMER_DASHBOARD_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 bg-sbs-blue text-white font-bold py-4 px-8 rounded-full shadow-xl hover:shadow-glow-blue hover:-translate-y-0.5 transition-all duration-300 text-base"
-                >
-                    Ir al Dashboard
-                    <ArrowUpRight className="w-4 h-4" />
-                </a>
-                <p className="text-xs text-gray-400">
-                    Necesitas el enlace de tu correo para iniciar sesión automáticamente
-                </p>
             </div>
 
         </div>

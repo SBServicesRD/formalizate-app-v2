@@ -23,12 +23,10 @@ const Header: React.FC<HeaderProps> = ({ showSaveExit = false, isDashboard = fal
     const [isMenuOpen, setIsMenuOpen] = useState(false);
 
     const handleExit = () => {
-        if (confirm("¿Estás seguro de que quieres guardar y salir?")) {
-            if (onExit) {
-                onExit();
-            } else {
-                window.location.reload();
-            }
+        if (onExit) {
+            onExit();
+        } else {
+            window.location.reload();
         }
     }
 
@@ -62,7 +60,7 @@ const Header: React.FC<HeaderProps> = ({ showSaveExit = false, isDashboard = fal
                         ) : shouldShowSaveExit && (
                             <button onClick={handleExit} className="text-text-secondary hover:text-sbs-blue hover:border-sbs-blue/30 font-medium flex items-center border border-premium-border px-6 py-2.5 rounded-full transition-all duration-300 text-sm bg-white shadow-sm hover:shadow-md">
                                 <LogIn className="w-4 h-4 mr-2 rotate-180" />
-                                Guardar y Salir
+                                Salir
                             </button>
                         )}
                     </div>
@@ -96,7 +94,7 @@ const Header: React.FC<HeaderProps> = ({ showSaveExit = false, isDashboard = fal
                                 onClick={() => { setIsMenuOpen(false); handleExit(); }}
                                 className="w-full text-center font-medium py-3 px-8 rounded-full bg-white border border-gray-200 shadow-sm text-text-secondary hover:text-sbs-blue hover:bg-gray-50 transition-colors"
                             >
-                                Guardar y Salir
+                                Salir
                             </button>
                         )}
                     </div>
