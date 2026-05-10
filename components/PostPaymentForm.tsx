@@ -19,6 +19,7 @@ interface PostPaymentFormProps {
     formData: FormData;
     updateFormData: (data: Partial<FormData>) => void;
     onComplete: () => void;
+    onSubmittingChange?: (submitting: boolean) => void;
 }
 
 type Section = 'details' | 'location' | 'powers' | 'fiscal' | 'references';
@@ -80,11 +81,22 @@ const FilePreview = ({ file, onRemove }: { file: File, onRemove: () => void }) =
 
 
 
-const PostPaymentForm: React.FC<PostPaymentFormProps> = ({ formData, updateFormData, onComplete }) => {
+const PostPaymentForm: React.FC<PostPaymentFormProps> = ({ formData, updateFormData, onComplete, onSubmittingChange }) => {
     const [activeSection, setActiveSection] = useState<Section>('details');
     const [errors, setErrors] = useState<Record<string, string | Record<string,string>>>({});
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [submissionError, setSubmissionError] = useState<string | null>(null);
+
+    // Propaga el estado de envío al padre (App.tsx) para que pueda activar
+    // protecciones contra navegación accidental durante el await del fetch.
+    useEffect(() => {
+        onSubmittingChange?.(isSubmitting);
+        return () => {
+            // Si el componente desmonta mid-submit (e.g. transición a Success),
+            // garantiza que el flag del padre quede limpio.
+            onSubmittingChange?.(false);
+        };
+    }, [isSubmitting, onSubmittingChange]);
 
     const hasLogo = formData.hasLogo || 'No';
 

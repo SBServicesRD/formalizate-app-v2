@@ -14,6 +14,7 @@ interface PaymentPageProps {
     updateFormData: (data: Partial<FormData>) => void;
     onPaymentSuccess: () => void;
     prevStep: () => void;
+    onAlreadyPaid?: () => void;
 }
 
 type PaymentMethod = 'azul' | 'gpay' | 'paypal' | 'transfer';
@@ -50,7 +51,17 @@ const bankAccounts = [
     }
 ];
 
-const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onPaymentSuccess, prevStep }) => {
+const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onPaymentSuccess, prevStep, onAlreadyPaid }) => {
+    // SECURITY: Bloquear el form de pago si el usuario ya pagó (previene doble cobro
+    // si entra aquí por navegación inversa via breadcrumb, deep link o reload con state).
+    const alreadyPaid = formData.paymentStatus === 'paid' || formData.paymentStatus === 'pending_confirmation';
+
+    useEffect(() => {
+        if (alreadyPaid && onAlreadyPaid) {
+            onAlreadyPaid();
+        }
+    }, [alreadyPaid, onAlreadyPaid]);
+
     const [isPaying, setIsPaying] = useState(false);
     const [isVerifying, setIsVerifying] = useState(false);
     const [error, setError] = useState('');
@@ -280,6 +291,16 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onP
     );
 
     const isBankSelected = selectedBankIndex !== null;
+
+    // Si ya pagó, no renderizar el form (el useEffect de arriba dispara el redirect via onAlreadyPaid)
+    if (alreadyPaid) {
+        return (
+            <div className="text-center py-20 animate-fade-in-up">
+                <Loader2 className="w-8 h-8 animate-spin text-sbs-blue mx-auto mb-4" />
+                <p className="text-text-secondary">Continuando con tu solicitud…</p>
+            </div>
+        );
+    }
 
     return (
         <div className="text-center py-12 animate-fade-in-up relative">

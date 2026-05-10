@@ -148,6 +148,9 @@ const App: React.FC = () => {
     const [page, setPage] = useState<PageView>('main');
     const [user, setUser] = useState<User | null>(null);
     const [authLoading, setAuthLoading] = useState(true);
+    // Activo mientras PostPaymentForm está enviando — protege contra cierre/refresh
+    // que podría perder la confirmación del expediente ya en vuelo.
+    const [isSubmittingFinal, setIsSubmittingFinal] = useState(false);
 
     useEffect(() => {
         if (!auth) {
@@ -206,6 +209,19 @@ const App: React.FC = () => {
         }
     }, [formData, currentStep, highestStepReached, user, authLoading]);
 
+    // Capa 2 de protección durante envío del expediente: bloquea cualquier intento de
+    // salida del navegador (refresh, back, cerrar pestaña, click en link externo).
+    // El diálogo nativo es genérico — el usuario decidido aún puede salir.
+    useEffect(() => {
+        if (!isSubmittingFinal) return;
+        const handler = (e: BeforeUnloadEvent) => {
+            e.preventDefault();
+            e.returnValue = '';
+        };
+        window.addEventListener('beforeunload', handler);
+        return () => window.removeEventListener('beforeunload', handler);
+    }, [isSubmittingFinal]);
+
     const updateFormData = (data: Partial<FormData>) => {
         setFormData(prev => ({ ...prev, ...data }));
     };
@@ -230,7 +246,8 @@ const App: React.FC = () => {
         }
 
         if (currentStep === AppStep.Summary) {
-            setStep(AppStep.Payment);
+            const alreadyPaid = formData.paymentStatus === 'paid' || formData.paymentStatus === 'pending_confirmation';
+            setStep(alreadyPaid ? AppStep.PostPaymentWelcome : AppStep.Payment);
             return;
         }
 
@@ -326,7 +343,7 @@ const App: React.FC = () => {
             if (!isPaymentVerified) {
                 return (
                     <Suspense fallback={<LoadingFallback />}>
-                        <PaymentPage formData={formData} updateFormData={updateFormData} onPaymentSuccess={handlePaymentSuccess} prevStep={goToPrevStep} />
+                        <PaymentPage formData={formData} updateFormData={updateFormData} onPaymentSuccess={handlePaymentSuccess} prevStep={goToPrevStep} onAlreadyPaid={() => setStep(AppStep.PostPaymentWelcome)} />
                     </Suspense>
                 );
             }
@@ -346,7 +363,7 @@ const App: React.FC = () => {
             case AppStep.Payment:
                  return (
                      <Suspense fallback={<LoadingFallback />}>
-                         <PaymentPage formData={formData} updateFormData={updateFormData} onPaymentSuccess={handlePaymentSuccess} prevStep={goToPrevStep} />
+                         <PaymentPage formData={formData} updateFormData={updateFormData} onPaymentSuccess={handlePaymentSuccess} prevStep={goToPrevStep} onAlreadyPaid={() => setStep(AppStep.PostPaymentWelcome)} />
                      </Suspense>
                  );
             case AppStep.Login:
@@ -355,7 +372,7 @@ const App: React.FC = () => {
             case AppStep.PostPaymentWelcome:
                 return <PostPaymentWelcome onStartForm={goToNextStep} />;
             case AppStep.PostPaymentForm:
-                return <PostPaymentForm formData={formData} updateFormData={updateFormData} onComplete={handleFinalSubmit} />;
+                return <PostPaymentForm formData={formData} updateFormData={updateFormData} onComplete={handleFinalSubmit} onSubmittingChange={setIsSubmittingFinal} />;
             case AppStep.Success:
                 return <SuccessPage formData={formData} startOver={goToDashboard} />;
             case AppStep.Dashboard:
@@ -445,11 +462,11 @@ const App: React.FC = () => {
                         <div className="absolute top-0 left-0 w-full h-[500px] bg-gradient-to-b from-premium-surface-subtle to-transparent pointer-events-none z-0" />
 
                         <main className="w-full max-w-5xl bg-white shadow-premium border border-premium-border p-8 sm:p-16 rounded-[2.5rem] relative z-10 mx-4 animate-fade-in-up">
-                             {currentStep >= AppStep.StepTypeSelection && (
+                             {currentStep >= AppStep.StepTypeSelection && currentStep < AppStep.PostPaymentWelcome && (
                                 <nav className="mb-8 flex" aria-label="Breadcrumb">
                                     <ol className="inline-flex items-center space-x-1 md:space-x-3 text-xs font-medium text-gray-400">
                                         <li className="inline-flex items-center">
-                                            <a href="#" onClick={(e) => {e.preventDefault(); setStep(AppStep.StepTypeSelection); setTimeout(() => window.scrollTo(0,0), 100); }} className="hover:text-sbs-blue transition-colors">
+                                            <a href="https://formalizate.app/" onClick={(e) => {e.preventDefault(); window.location.href = 'https://formalizate.app/';}} className="hover:text-sbs-blue transition-colors">
                                                 Inicio
                                             </a>
                                         </li>
@@ -507,7 +524,18 @@ const App: React.FC = () => {
                 isDashboard={isDashboard}
                 isLegal={isLegalPage}
                 setPage={setPage}
-                onExit={() => setStep(AppStep.StepTypeSelection)}
+                onExit={() => {
+                    if (isSubmittingFinal) {
+                        if (!confirm("Tu expediente se está enviando ahora mismo. Si sales podrías perder la confirmación. ¿Salir de todas formas?")) {
+                            return;
+                        }
+                    } else if (currentStep < AppStep.Success) {
+                        if (!confirm("¿Salir del proceso? Se perderá la información que no hayas enviado.")) {
+                            return;
+                        }
+                    }
+                    window.location.href = 'https://formalizate.app/';
+                }}
             />
             <div>
                 {renderPageContent()}
