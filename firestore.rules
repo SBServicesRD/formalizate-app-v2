@@ -1,0 +1,39 @@
+rules_version = '2';
+
+// ============================================================
+// Reglas de Firestore — base de datos: formalizate-app-prod
+// ============================================================
+// IMPORTANTE: Toda lectura/escritura legítima de `ventas` ocurre vía:
+//   - El servidor Express (server.cjs) usando el Admin SDK
+//   - Las Cloud Functions (functions/index.js) usando el Admin SDK
+//   - Los dashboards (customer/admin/investor) vía esas Cloud Functions
+// El Admin SDK IGNORA estas reglas. Por tanto, ningún cliente del navegador
+// necesita acceso directo a `ventas`, y debe denegarse por completo.
+//
+// Antes (INSEGURO): `allow read, update, create: if request.auth != null;`
+//   → cualquier usuario registrado podía leer/modificar TODAS las ventas.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Ventas: acceso de cliente totalmente denegado (solo Admin SDK / Functions).
+    match /ventas/{ventaId} {
+      allow read, write: if false;
+
+      // Subcolecciones (ej. comments): también solo vía Cloud Functions.
+      match /{document=**} {
+        allow read, write: if false;
+      }
+    }
+
+    // Config pública (chatbot, etc.): solo lectura, nunca escritura desde cliente.
+    match /config/{document=**} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Negación explícita para cualquier otra colección.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

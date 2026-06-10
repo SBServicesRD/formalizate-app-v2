@@ -4,8 +4,12 @@
     "runtime": "nodejs22"
   },
   "firestore": {
+    "database": "formalizate-app-prod",
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
+  },
+  "storage": {
+    "rules": "storage.rules"
   },
   "hosting": [
     {

@@ -1,0 +1,31 @@
+rules_version = '2';
+
+// ============================================================
+// Reglas de Cloud Storage — bucket: sbservicesrd.firebasestorage.app
+// ============================================================
+// Contiene datos sensibles: cédulas (frente/dorso), comprobantes de pago,
+// certificados ONAPI, logos.
+//
+// LECTURA — cerrada a usuarios autenticados.
+//   Los dashboards muestran archivos mediante download URLs con token
+//   (getDownloadURL), que están autorizadas por el token y NO dependen de
+//   esta regla. Por tanto cerrar la lectura NO rompe la visualización, pero
+//   SÍ elimina el acceso público anónimo por path (la fuga de cédulas).
+//
+//   Antes (BRECHA CRÍTICA): `allow read;`  → cualquiera en internet, sin
+//   login, podía leer cualquier archivo (cédulas/comprobantes) por su URL.
+//
+// ESCRITURA — se mantiene abierta a propósito (de momento):
+//   El panel admin sube archivos vía magic-link JWT propio, SIN sesión de
+//   Firebase Auth, por lo que `request.auth` es null en ese flujo. Exigir
+//   auth en escritura rompería las subidas del admin (certificados/docs).
+//   TODO (Ola 1): migrar las subidas del admin a una Cloud Function con
+//   verificación de token y entonces exigir auth aquí.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if true;
+    }
+  }
+}
