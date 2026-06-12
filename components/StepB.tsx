@@ -332,6 +332,7 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
             if (!validateRequired(p.surnames)) pErr.surnames = "Requerido";
             if (!validateRequired(p.nationality)) pErr.nationality = "Requerido";
             if (!validateRequired(p.profession)) pErr.profession = "Requerido";
+            if (p.genero !== 'M' && p.genero !== 'F') pErr.genero = "Requerido";
             
             if (!validateRequired(p.mobilePhone)) pErr.mobilePhone = "Requerido";
             else if (!validatePhoneNumber(p.mobilePhone)) pErr.mobilePhone = "Inválido";
@@ -734,6 +735,21 @@ const StepB: React.FC<StepBProps> = ({ formData, updateFormData, nextStep, prevS
                                 <option value="Casado(a)">Casado(a)</option>
                                 <option value="Unión Libre">Unión Libre</option>
                             </select>
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1 tracking-wider">
+                                Sexo <span className="text-sbs-red">*</span>
+                            </label>
+                            <select
+                                value={partner.genero || ''}
+                                onChange={e => handlePartnerChange(partner.id, 'genero', e.target.value)}
+                                className={`${inputClass} ${isError(partner.id, 'genero') ? 'border-red-300 bg-red-50' : ''}`}
+                            >
+                                <option value="" disabled>Selecciona…</option>
+                                <option value="M">Masculino</option>
+                                <option value="F">Femenino</option>
+                            </select>
+                            {isError(partner.id, 'genero') && <p className="text-red-500 text-xs mt-1">{errors[partner.id]['genero']}</p>}
                         </div>
                         <div>
                             <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1 tracking-wider">

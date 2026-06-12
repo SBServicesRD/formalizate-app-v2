@@ -44,9 +44,9 @@ export interface Partner {
     nationality: string;
     birthDate: string;
     maritalStatus: MaritalStatus;
+    genero?: 'M' | 'F';
     matrimonialRegime?: MatrimonialRegime;
     profession: string;
-    documentType: 'Cédula' | 'Pasaporte';
     documentType: 'Cédula' | 'Pasaporte';
     idNumber: string;
     idFront: File | null;

@@ -144,8 +144,21 @@ formalizate.app/
 
 ### Deploy Cloud Run (Vite + Express)
 
+> ⚠️ **El wizard se despliega al servicio `formalizate-wizard`** (dominio `app.formalizate.app`).
+> NO a `formalizate-app` — ese es el **landing** (`formalizate.app`). Los domain mappings reales:
+> `app.formalizate.app → formalizate-wizard`, `formalizate.app → formalizate-app` (landing),
+> `blog.formalizate.app → formalizate-blog`.
+
+> ⚠️ **Compila SIEMPRE antes de desplegar.** Los buildpacks NO corren `npm run build`
+> (no hay `gcp-build` ni `GOOGLE_NODE_RUN_SCRIPTS`); `server.cjs` solo sirve el `dist/`
+> que se sube. Si no compilas primero, el deploy sube un `dist/` viejo.
+
 ```bash
-gcloud run deploy formalizate-app \
+# 1. Compilar el frontend (genera dist/ con los cambios)
+npm run build
+
+# 2. Desplegar al servicio del wizard
+gcloud run deploy formalizate-wizard \
   --source . \
   --region us-central1 \
   --allow-unauthenticated \
@@ -154,6 +167,11 @@ gcloud run deploy formalizate-app \
 ```
 
 `VITE_*` vive en `build.env.yaml` (build-time) y backend vars en `runtime.env.yaml` (runtime).
+
+**Verificar en vivo:** revisa el hash del bundle en `https://app.formalizate.app` →
+`/assets/index-*.js` debe cambiar tras el deploy. Si el deploy reusó una imagen en caché y no
+refleja el cambio, despliega la imagen recién construida por `--image` a un tag `--no-traffic`,
+verifícala en su URL de tag, y promuévela con `gcloud run services update-traffic formalizate-wizard --to-revisions <REV>=100`.
 
 ### El chatbot no funciona
 - Verifica que `GEMINI_API_KEY` esté configurada
