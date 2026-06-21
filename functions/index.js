@@ -205,6 +205,10 @@ function getTemplate(type, data) {
       subject: "✅ Pago Confirmado - Iniciamos labores",
       html: `<div style="${styles.container}"><div style="${styles.header}"><h2>¡Pago Confirmado!</h2></div>${commonBody}<p>Tu pago ha sido procesado exitosamente. Ya hemos iniciado tu expediente legal.</p>${dashboardSection}</div></div>`,
     },
+    documentos_listos: {
+      subject: "📄 Tus documentos constitutivos están listos para revisar",
+      html: `<div style="${styles.container}"><div style="${styles.header}"><h2>Tus documentos están listos</h2></div>${commonBody}<p>Hemos preparado tus <strong>documentos constitutivos</strong> (estatutos / acta constitutiva). Revísalos en tu panel y, si todo está correcto, <strong>apruébalos con un clic</strong> para que sigamos avanzando. Si tienes cualquier duda o necesitas un cambio, puedes decírnoslo desde el mismo panel.</p><div style="background-color:#fff8e1;padding:12px 15px;border-radius:6px;color:#8a6d3b;font-size:13px;margin:16px 0;">ℹ️ El nombre comercial en los documentos es <strong>provisional</strong> mientras ONAPI lo aprueba. Si el nombre llegara a ser objetado, lo sustituiremos y te avisaremos antes de continuar.</div><center><a href="${dashboardUrl || "#"}" style="${styles.btn}">Revisar y Aprobar</a></center>${dashboardSection}</div></div>`,
+    },
     transferencia_validada: {
       subject: "✅ Transferencia Validada",
       html: `<div style="${styles.container}"><div style="${styles.header}"><h2>Pago Aprobado</h2></div>${commonBody}<p>Hemos confirmado tu transferencia bancaria.</p><center><a href="${dashboardUrl || "#"}" style="${styles.btn}">Ver Estatus</a></center></div></div>`,
@@ -311,6 +315,80 @@ exports.onVentaCreate = onDocumentCreated(
 );
 
 // ============================================================
+// PUENTE → NOTION — marca el lead como Cerrado al entrar una venta
+// (función AISLADA; no toca onVentaCreate ni las demás)
+// ============================================================
+const NOTION_BRIDGE_WEBHOOK = "https://n8n.formalizate.app/webhook/venta-cerrada-7c3a1f2e";
+
+exports.onVentaSyncNotion = onDocumentCreated(
+  {
+    document: "ventas/{ventaId}",
+    database: "formalizate-app-prod",
+    region: "us-central1",
+  },
+  async (event) => {
+    try {
+      const snap = event.data;
+      if (!snap) return;
+      const data = snap.data();
+      const email = data.email || data.userEmail || data.applicant?.email || "";
+      const phone = data.telefono || data.phone || data.whatsapp || data.applicant?.phone || "";
+      let nombre = "Cliente";
+      if (data.applicant?.names) {
+        nombre = `${data.applicant.names} ${data.applicant.surnames || ""}`.trim();
+      } else if (data.nombre) {
+        nombre = data.nombre;
+      }
+      const plan = data.plan || data.packageName || "";
+      const monto = data.monto || data.totalAmount || "";
+      const orderId = data.orderId || event.params.ventaId;
+      const empresa = data.companyName || nombre;
+      const status = data.status || "";
+      await fetch(NOTION_BRIDGE_WEBHOOK, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, phone, nombre, empresa, plan, monto, orderId, status, event: "create" }),
+      });
+    } catch (error) {
+      console.error("Puente Notion (onVentaSyncNotion) falló:", error);
+    }
+  }
+);
+
+// Auto-mueve la ficha del expediente a ✅ Completado cuando Firestore lo marca completado
+exports.onVentaStatusComplete = onDocumentUpdated(
+  {
+    document: "ventas/{ventaId}",
+    database: "formalizate-app-prod",
+    region: "us-central1",
+  },
+  async (event) => {
+    try {
+      const before = event.data?.before?.data() || {};
+      const after = event.data?.after?.data() || {};
+      if (before.status === "completado" || after.status !== "completado") return;
+      const email = after.email || after.userEmail || after.applicant?.email || "";
+      const phone = after.telefono || after.phone || after.applicant?.phone || "";
+      let nombre = "Cliente";
+      if (after.applicant?.names) {
+        nombre = `${after.applicant.names} ${after.applicant.surnames || ""}`.trim();
+      } else if (after.nombre) {
+        nombre = after.nombre;
+      }
+      const empresa = after.companyName || nombre;
+      const plan = after.plan || after.packageName || "";
+      await fetch(NOTION_BRIDGE_WEBHOOK, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, phone, nombre, empresa, plan, status: "completado", event: "completado" }),
+      });
+    } catch (error) {
+      console.error("Puente Notion (onVentaStatusComplete) falló:", error);
+    }
+  }
+);
+
+// ============================================================
 // MAPA DE HITOS — para emails de progreso personalizados
 // ============================================================
 const HITO_LABELS = {
@@ -360,15 +438,19 @@ exports.onVentaUpdate = onDocumentUpdated(
     } else if (statusNew === "pagado") {
       templateType = "pago_exitoso";
 
-    // 4. ONAPI aprobado
+    // 4. Documentos constitutivos listos para revisión/aprobación del cliente
+    } else if (statusNew === "documentos_en_revision") {
+      templateType = "documentos_listos";
+
+    // 5. ONAPI aprobado
     } else if (statusNew === "onapi_listo") {
       templateType = "onapi_listo";
 
-    // 5. Proceso completado
+    // 6. Proceso completado
     } else if (statusNew === "completado") {
       templateType = "completado";
 
-    // 6. Hitos intermedios — cada uno con su propio label
+    // 7. Hitos intermedios — cada uno con su propio label
     } else if (HITO_LABELS[statusNew]) {
       templateType = "hito_listo";
       hitoLabel    = HITO_LABELS[statusNew];
@@ -508,6 +590,82 @@ exports.customerComments = onRequest(
       return res.status(400).json({ error: "Acción no reconocida" });
     } catch (err) {
       console.warn("customerComments acceso denegado:", err.message);
+      return res.status(401).json({ error: err.message || "Acceso inválido" });
+    }
+  }
+);
+
+/**
+ * POST { token, pin, decision: 'approve' | 'request_changes', message? }
+ * El cliente aprueba sus documentos constitutivos o solicita cambios.
+ */
+exports.customerApproveDocs = onRequest(
+  { region: "us-central1", cors: true },
+  async (req, res) => {
+    if (req.method !== "POST") {
+      return res.status(405).json({ error: "Método no permitido" });
+    }
+
+    const { token, pin, decision, message } = req.body || {};
+    if (!token || !pin || !decision) {
+      return res.status(400).json({ error: "Parámetros faltantes" });
+    }
+    if (!["approve", "request_changes"].includes(decision)) {
+      return res.status(400).json({ error: "Decisión no válida" });
+    }
+
+    try {
+      const { saleId, saleData } = await verifyCustomerAccess(token, pin);
+      const saleRef     = db.collection("ventas").doc(saleId);
+      const commentsRef = saleRef.collection("comments");
+
+      const nombre = saleData.applicant?.names
+        ? `${saleData.applicant.names} ${saleData.applicant.surnames || ""}`.trim()
+        : (saleData.nombre || "El cliente");
+      const empresa = saleData.companyName || "su empresa";
+      const orderId = saleData.orderId || saleId;
+
+      if (decision === "approve") {
+        await saleRef.update({
+          docsApprovalStatus: "approved",
+          docsApprovedAt:     FieldValue.serverTimestamp(),
+          status:             "documentos_aprobados",
+        });
+        await commentsRef.add({
+          message:    "✅ Aprobé mis documentos constitutivos.",
+          authorRole: "customer",
+          createdAt:  FieldValue.serverTimestamp(),
+        });
+        await sendEmail({
+          to: "ventas@formalizate.app",
+          subject: `✅ Documentos APROBADOS — ${empresa}`,
+          html: `<p><strong>${nombre}</strong> aprobó sus documentos constitutivos.</p>
+                 <p>Empresa: <strong>${empresa}</strong><br/>Orden: ${orderId}</p>
+                 <p>Ya puedes continuar con la gestión de ONAPI.</p>`,
+        });
+        return res.json({ ok: true, docsApprovalStatus: "approved" });
+      }
+
+      // request_changes
+      if (!message?.trim()) {
+        return res.status(400).json({ error: "Indica qué cambios necesitas" });
+      }
+      await saleRef.update({ docsApprovalStatus: "changes_requested" });
+      await commentsRef.add({
+        message:    `✏️ Solicité cambios en mis documentos: ${message.trim()}`,
+        authorRole: "customer",
+        createdAt:  FieldValue.serverTimestamp(),
+      });
+      await sendEmail({
+        to: "ventas@formalizate.app",
+        subject: `✏️ Cambios solicitados en documentos — ${empresa}`,
+        html: `<p><strong>${nombre}</strong> solicitó cambios en sus documentos constitutivos.</p>
+               <p>Empresa: <strong>${empresa}</strong><br/>Orden: ${orderId}</p>
+               <blockquote style="border-left:3px solid #E63A47;padding-left:12px;color:#555;">${message.trim()}</blockquote>`,
+      });
+      return res.json({ ok: true, docsApprovalStatus: "changes_requested" });
+    } catch (err) {
+      console.warn("customerApproveDocs error:", err.message);
       return res.status(401).json({ error: err.message || "Acceso inválido" });
     }
   }
