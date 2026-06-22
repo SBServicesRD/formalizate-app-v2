@@ -4,6 +4,8 @@
 require('dotenv').config();
 
 const { getFirestore } = require('firebase-admin/firestore');
+const { getStorage } = require('firebase-admin/storage');
+const crypto = require('crypto');
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
@@ -185,6 +187,56 @@ const firebaseApp = admin.initializeApp({
 const db = getFirestore(firebaseApp, 'formalizate-app-prod'); // Especificar base de datos de producción
 
 // ============================================
+// STORAGE: generación de URLs de descarga (server-side)
+// ============================================
+// El wizard ahora envía RUTAS de Storage (no URLs): generar la URL en el
+// cliente con getDownloadURL() exige permiso de lectura, cerrado a invitados
+// tras el endurecimiento de seguridad. El Admin SDK ignora las reglas, así que
+// aquí convertimos cada ruta en una URL de descarga con token (igual formato
+// que getDownloadURL) sin reabrir la lectura pública por path.
+const STORAGE_BUCKET = 'sbservicesrd.firebasestorage.app';
+const storageBucket = getStorage(firebaseApp).bucket(STORAGE_BUCKET);
+
+const pathToDownloadUrl = async (value) => {
+  // Vacío o ya es una URL http(s) (cliente autenticado / valor previo): tal cual.
+  if (typeof value !== 'string' || value === '' || /^https?:\/\//i.test(value)) {
+    return value;
+  }
+  try {
+    const token = crypto.randomUUID();
+    await storageBucket.file(value).setMetadata({
+      metadata: { firebaseStorageDownloadTokens: token }
+    });
+    return `https://firebasestorage.googleapis.com/v0/b/${STORAGE_BUCKET}/o/${encodeURIComponent(value)}?alt=media&token=${token}`;
+  } catch (e) {
+    // Nunca abortamos el guardado por esto: conservamos la ruta para no perder
+    // el expediente (el Admin SDK puede recuperar el archivo por su ruta).
+    console.error('⚠️ No se pudo generar URL de descarga para', value, '-', e.message);
+    return value;
+  }
+};
+
+// Convierte rutas -> URLs en todos los campos de archivo del expediente.
+const resolveStoragePaths = async (datos) => {
+  const out = { ...datos };
+  out.logoFile = await pathToDownloadUrl(out.logoFile);
+  out.onapiCertificate = await pathToDownloadUrl(out.onapiCertificate);
+  out.paymentReceipt = await pathToDownloadUrl(out.paymentReceipt);
+
+  const resolvePeople = async (arr) => Array.isArray(arr)
+    ? Promise.all(arr.map(async (p) => ({
+        ...p,
+        idFront: await pathToDownloadUrl(p && p.idFront),
+        idBack: await pathToDownloadUrl(p && p.idBack)
+      })))
+    : arr;
+
+  out.partners = await resolvePeople(out.partners);
+  out.titulars = await resolvePeople(out.titulars);
+  return out;
+};
+
+// ============================================
 // RATE LIMITERS (usando constantes de configuración)
 // ============================================
 
@@ -245,8 +297,8 @@ app.get('/api/verify-payment-status', async (req, res) => {
 
 app.post('/api/procesar-solicitud', async (req, res) => {
   try {
-    const datos = req.body;
-    
+    const datos = await resolveStoragePaths(req.body);
+
     const docRef = await db.collection('ventas').add({
         ...datos,
         fecha: new Date(),

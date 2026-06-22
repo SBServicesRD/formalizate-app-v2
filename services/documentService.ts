@@ -1,6 +1,6 @@
 import { FormData as AppFormData, Partner, Titular } from '../types';
 import { storage, db, auth } from './firebase'; 
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes } from 'firebase/storage';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 
 type Uploadable = File | string | null | undefined;
@@ -27,12 +27,18 @@ type SerializedForm = Omit<AppFormData,
 
 const isBrowserFile = (value: unknown): value is File => typeof File !== 'undefined' && value instanceof File;
 
-const uploadFileAndGetUrl = async (file: File, folder: string, description: string): Promise<string> => {
+// Sube el archivo y devuelve su RUTA en Storage (no la URL de descarga).
+// Generar la URL con getDownloadURL() requiere permiso de LECTURA, que desde
+// el endurecimiento de seguridad solo se concede a usuarios autenticados; un
+// cliente invitado obtendría 403 y se rompería el cierre del expediente.
+// La escritura sigue abierta, así que la subida funciona; el servidor
+// (Admin SDK, ignora las reglas) convierte esta ruta en una URL descargable.
+const uploadFileAndGetPath = async (file: File, folder: string): Promise<string> => {
     const cleanName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
     const fileName = `${Date.now()}-${cleanName}`;
     const storageRef = ref(storage, `${folder}/${fileName}`);
     const snapshot = await uploadBytes(storageRef, file);
-    return await getDownloadURL(snapshot.ref);
+    return snapshot.ref.fullPath;
 };
 
 const resolveUpload = async (
@@ -48,7 +54,7 @@ const resolveUpload = async (
 
     if (isBrowserFile(fileInput)) {
         try {
-            return await uploadFileAndGetUrl(fileInput, folder, description);
+            return await uploadFileAndGetPath(fileInput, folder);
         } catch {
             throw new Error(`No se pudo subir ${description}.`);
         }

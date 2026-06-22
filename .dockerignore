@@ -1,0 +1,11 @@
+node_modules
+.git
+.claude
+.cursor
+*.log
+firebase-debug.log
+.env
+.env.*
+env.yaml
+build.env.yaml
+runtime.env.yaml

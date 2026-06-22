@@ -1,6 +1,7 @@
 # Archivos y carpetas ignorados por Google Cloud
 node_modules/
 .cursor/
+.claude/
 .git/
 .gitignore
 .env 
