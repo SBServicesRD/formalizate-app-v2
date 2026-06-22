@@ -4,6 +4,7 @@ const { setGlobalOptions } = require("firebase-functions/v2");
 const { initializeApp } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
+const { getStorage } = require("firebase-admin/storage");
 const nodemailer = require("nodemailer");
 const crypto = require("crypto");
 
@@ -14,6 +15,25 @@ setGlobalOptions({ region: "us-central1" });
 
 const app = initializeApp();
 const db = getFirestore(app, "formalizate-app-prod");
+const STORAGE_BUCKET = process.env.STORAGE_BUCKET || "sbservicesrd.firebasestorage.app";
+
+/**
+ * Genera la download URL (tipo getDownloadURL) de un objeto en Storage usando
+ * el Admin SDK, que ignora las reglas de seguridad. El admin no tiene sesión de
+ * Firebase Auth, así que NO puede llamar getDownloadURL desde el cliente (la
+ * regla `allow read: if request.auth != null` lo bloquea). Esto lo resuelve.
+ */
+async function buildDownloadUrl(objectPath) {
+  const file = getStorage(app).bucket(STORAGE_BUCKET).file(objectPath);
+  const [meta] = await file.getMetadata();
+  let token = meta && meta.metadata && meta.metadata.firebaseStorageDownloadTokens;
+  if (!token) {
+    token = crypto.randomUUID();
+    await file.setMetadata({ metadata: { firebaseStorageDownloadTokens: token } });
+  }
+  return `https://firebasestorage.googleapis.com/v0/b/${STORAGE_BUCKET}/o/` +
+    `${encodeURIComponent(objectPath)}?alt=media&token=${token}`;
+}
 
 // URLs de los dashboards (configurables via env)
 const CUSTOMER_DASHBOARD_URL = process.env.CUSTOMER_DASHBOARD_URL || "https://dash.formalizate.app";
@@ -1064,20 +1084,33 @@ exports.adminUpdateDocumentUrl = onRequest(
       return res.status(401).json({ error: err.message });
     }
 
-    const { saleId, field, url } = req.body || {};
+    const { saleId, field, url, path } = req.body || {};
     if (!saleId || !field) return res.status(400).json({ error: "saleId y field son requeridos" });
 
-    const ALLOWED_FIELDS = ["paymentReceipt", "onapiCertificate", "estatutosUrl", "registroMercantilUrl", "rncUrl"];
+    const ALLOWED_FIELDS = [
+      // Documentos constitutivos (revisión del cliente)
+      "estatutosUrl", "asambleaUrl", "pdrUrl",
+      // Trámites y certificaciones
+      "paymentReceipt", "onapiCertificate", "registroMercantilUrl", "rncUrl",
+      "bankLetterUrl", "tssUrl", "firmaDigitalUrl", "dominioUrl",
+      "dgaUrl", "proveedorEstadoUrl", "webUrl",
+    ];
     if (!ALLOWED_FIELDS.includes(field)) {
       return res.status(400).json({ error: `Campo no permitido: ${field}` });
     }
 
     try {
+      // Si llega `path` (subida nueva), el backend genera la download URL.
+      // Si llega `url` (o vacío, para borrar), se usa tal cual.
+      let finalUrl = typeof url === "string" ? url : "";
+      if (!finalUrl && path) {
+        finalUrl = await buildDownloadUrl(path);
+      }
       await db.collection("ventas").doc(saleId).update({
-        [field]: url || "",
+        [field]: finalUrl,
         updatedAt: FieldValue.serverTimestamp(),
       });
-      return res.json({ ok: true });
+      return res.json({ ok: true, url: finalUrl });
     } catch (err) {
       console.error("adminUpdateDocumentUrl error:", err);
       return res.status(500).json({ error: "Error actualizando documento" });
