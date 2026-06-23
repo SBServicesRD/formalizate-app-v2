@@ -1118,6 +1118,114 @@ exports.adminUpdateDocumentUrl = onRequest(
   }
 );
 
+/**
+ * POST (x-admin-token) + { saleId, links:[{label,url}], action:'save'|'send'|'verify' }
+ * Firma digital de Persona Física: guarda los enlaces de verificación de identidad
+ * (uno por socio/titular), y en 'send' notifica al cliente con esos enlaces.
+ * No hay integración con la certificadora: el admin compra la firma manualmente y
+ * pega aquí el enlace que recibe; el dashboard solo lo entrega y trackea el estatus.
+ */
+exports.adminUpdateFirmaDigital = onRequest(
+  { region: "us-central1", cors: true },
+  async (req, res) => {
+    if (req.method !== "POST") return res.status(405).json({ error: "Método no permitido" });
+
+    try {
+      verifyAdminAccess(req);
+    } catch (err) {
+      return res.status(401).json({ error: err.message });
+    }
+
+    const { saleId, links, action } = req.body || {};
+    if (!saleId || !action) return res.status(400).json({ error: "saleId y action son requeridos" });
+
+    const cleanLinks = Array.isArray(links)
+      ? links
+          .filter((l) => l && typeof l.url === "string" && l.url.trim())
+          .map((l) => ({
+            label: String(l.label || "Titular").slice(0, 80),
+            url: String(l.url).trim().slice(0, 1000),
+          }))
+      : [];
+
+    try {
+      const saleRef = db.collection("ventas").doc(saleId);
+
+      if (action === "verify") {
+        await saleRef.update({
+          firmaDigitalStatus: "verificada",
+          firmaDigitalVerifiedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+        return res.json({ ok: true, firmaDigitalStatus: "verificada" });
+      }
+
+      const snap = await saleRef.get();
+      const saleData = snap.data() || {};
+      const update = {
+        firmaDigitalLinks: cleanLinks,
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+
+      if (action === "send") {
+        if (cleanLinks.length === 0) {
+          return res.status(400).json({ error: "Agrega al menos un enlace antes de enviar" });
+        }
+        update.firmaDigitalStatus = "enlace_enviado";
+        update.firmaDigitalSentAt = FieldValue.serverTimestamp();
+      } else {
+        update.firmaDigitalStatus = saleData.firmaDigitalStatus || "pendiente";
+      }
+
+      await saleRef.update(update);
+
+      if (action === "send") {
+        const email = saleData.email || saleData.userEmail || saleData.applicant?.email;
+        const nombre = saleData.applicant?.names
+          ? `${saleData.applicant.names} ${saleData.applicant.surnames || ""}`.trim()
+          : (saleData.nombre || "Cliente");
+        const empresa = saleData.companyName || "tu empresa";
+
+        const firestoreId = saleData.firestoreId || saleId;
+        const customerSecret = process.env.CUSTOMER_MAGIC_SECRET;
+        let dashboardUrl = CUSTOMER_DASHBOARD_URL;
+        if (customerSecret && firestoreId) {
+          const t = signToken(
+            { saleId: firestoreId, role: "customer", issuedAt: Math.floor(Date.now() / 1000) },
+            customerSecret
+          );
+          dashboardUrl = `${CUSTOMER_DASHBOARD_URL}/?token=${t}`;
+        }
+
+        if (email) {
+          const linksHtml = cleanLinks
+            .map((l) => `<p style="margin:10px 0;"><strong>${l.label}:</strong><br/>
+              <a href="${l.url}" style="color:#1D3557;font-weight:bold;">${l.url}</a></p>`)
+            .join("");
+          await sendEmail({
+            to: email,
+            subject: `🔐 Activa tu firma digital — ${empresa}`,
+            html: `<p>Hola <strong>${nombre}</strong>,</p>
+                   <p>El primer paso para constituir <strong>${empresa}</strong> es activar tu
+                   <strong>firma digital de persona física</strong>. Ya la adquirimos por ti — solo
+                   necesitas <strong>validar tu identidad</strong> (es 100% remoto y toma unos minutos).</p>
+                   <p>Abre tu enlace de verificación${cleanLinks.length > 1 ? " (uno por socio)" : ""}:</p>
+                   ${linksHtml}
+                   <p style="margin-top:16px;">También puedes seguir tu proceso en tu panel:
+                   <a href="${dashboardUrl}" style="color:#1D3557;">${dashboardUrl}</a></p>
+                   <p>Cualquier duda, responde a este correo.</p>`,
+          });
+        }
+      }
+
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("adminUpdateFirmaDigital error:", err);
+      return res.status(500).json({ error: "No se pudo guardar la firma digital" });
+    }
+  }
+);
+
 /** POST (x-admin-token) + { saleId } → lista comentarios */
 exports.adminGetComments = onRequest(
   { region: "us-central1", cors: true },
