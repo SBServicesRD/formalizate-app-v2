@@ -1119,6 +1119,85 @@ exports.adminUpdateDocumentUrl = onRequest(
 );
 
 /**
+ * POST (x-admin-token) + { saleId }
+ * Reabre la aprobación tras "cambios solicitados": resetea docsApprovalStatus,
+ * garantiza status=documentos_en_revision y REENVÍA al cliente el correo
+ * "documentos listos" con la versión corregida (regenerando su token).
+ * Sin esto el cliente queda atascado en la pantalla "Recibimos tu solicitud".
+ */
+exports.adminReopenDocsApproval = onRequest(
+  { region: "us-central1", cors: true },
+  async (req, res) => {
+    if (req.method !== "POST") return res.status(405).json({ error: "Método no permitido" });
+
+    try {
+      verifyAdminAccess(req);
+    } catch (err) {
+      return res.status(401).json({ error: err.message });
+    }
+
+    const { saleId } = req.body || {};
+    if (!saleId) return res.status(400).json({ error: "saleId requerido" });
+
+    try {
+      const saleRef = db.collection("ventas").doc(saleId);
+      const snap = await saleRef.get();
+      if (!snap.exists) return res.status(404).json({ error: "Venta no encontrada" });
+      const data = snap.data();
+
+      // status ya suele estar en documentos_en_revision (request_changes no lo cambia),
+      // así que esta escritura NO dispara correo en onVentaUpdate (statusChanged=false).
+      await saleRef.update({
+        docsApprovalStatus: "pending_review",
+        status: "documentos_en_revision",
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+
+      await saleRef.collection("comments").add({
+        message: "🛠 Corregimos tus documentos según tu solicitud. Por favor revísalos y apruébalos cuando estés conforme.",
+        authorRole: "admin",
+        createdAt: FieldValue.serverTimestamp(),
+      });
+
+      // Reenviar el correo "documentos listos" (token fresco, igual que onVentaUpdate).
+      const email = data.email || data.userEmail || data.applicant?.email;
+      let nombre = "Cliente";
+      if (data.applicant?.names) {
+        nombre = `${data.applicant.names} ${data.applicant.surnames || ""}`.trim();
+      } else if (data.nombre) {
+        nombre = data.nombre;
+      }
+      const orderId = data.orderId || saleId;
+      const plan = data.plan || data.packageName;
+      const monto = getPrecio(plan, data.monto || data.totalAmount);
+
+      const firestoreId = data.firestoreId || saleId;
+      const customerSecret = process.env.CUSTOMER_MAGIC_SECRET;
+      let dashboardUrl = CUSTOMER_DASHBOARD_URL;
+      if (customerSecret && firestoreId) {
+        const dashboardToken = signToken(
+          { saleId: firestoreId, role: "customer", issuedAt: Math.floor(Date.now() / 1000) },
+          customerSecret
+        );
+        dashboardUrl = `${CUSTOMER_DASHBOARD_URL}/?token=${dashboardToken}`;
+      }
+
+      if (email) {
+        const template = getTemplate("documentos_listos", { nombre, plan, monto, orderId, dashboardUrl });
+        if (template) {
+          await sendEmail({ to: email, subject: template.subject, html: template.html });
+        }
+      }
+
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("adminReopenDocsApproval error:", err);
+      return res.status(500).json({ error: "Error reabriendo la aprobación" });
+    }
+  }
+);
+
+/**
  * POST (x-admin-token) + { saleId, links:[{label,url}], action:'save'|'send'|'verify' }
  * Firma digital de Persona Física: guarda los enlaces de verificación de identidad
  * (uno por socio/titular), y en 'send' notifica al cliente con esos enlaces.
