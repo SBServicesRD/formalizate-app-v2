@@ -100,6 +100,12 @@ const PostPaymentForm: React.FC<PostPaymentFormProps> = ({ formData, updateFormD
 
     const hasLogo = formData.hasLogo || 'No';
 
+    // Firma conjunta/indistinta requiere ≥2 firmantes (gerentes). Con menos, solo "Solo el Gerente"
+    // es coherente — evita expedientes contradictorios (firma conjunta con un único gerente).
+    const numGerentes = (formData.partners || []).filter(p => (p.roles || []).includes('Gerente')).length
+        + (formData.manager?.type === 'Tercero' ? 1 : 0);
+    const canMultiSign = numGerentes >= 2;
+
     // EIRL: Auto-set powers to single-person defaults
     useEffect(() => {
         if (formData.companyType === 'EIRL') {
@@ -112,6 +118,16 @@ const PostPaymentForm: React.FC<PostPaymentFormProps> = ({ formData, updateFormD
             if (Object.keys(updates).length > 0) updateFormData(updates);
         }
     }, [formData.companyType]);
+
+    // SRL con <2 gerentes: la firma conjunta/indistinta no aplica → forzar "Solo el Gerente".
+    useEffect(() => {
+        if (formData.companyType !== 'EIRL' && !canMultiSign) {
+            const updates: Partial<FormData> = {};
+            if (formData.legalSignaturePowers && formData.legalSignaturePowers !== 'Solo el Gerente') updates.legalSignaturePowers = 'Solo el Gerente';
+            if (formData.bankPowers && formData.bankPowers !== 'Solo el Gerente') updates.bankPowers = 'Solo el Gerente';
+            if (Object.keys(updates).length > 0) updateFormData(updates);
+        }
+    }, [canMultiSign, formData.companyType]);
 
     const inputClass = "w-full px-5 py-4 rounded-xl bg-white border border-gray-200 text-text-primary placeholder-gray-400 focus:outline-none focus:border-sbs-blue focus:ring-4 focus:ring-sbs-blue/10 transition-all duration-300 shadow-sm text-sm font-medium";
     const labelClass = "block text-xs font-bold text-text-tertiary mb-2 uppercase tracking-widest";
@@ -762,19 +778,25 @@ const PostPaymentForm: React.FC<PostPaymentFormProps> = ({ formData, updateFormD
 
                                      <div className="space-y-2">
 
-                                         {['Solo el Gerente', 'Firma Conjunta', 'Firma Indistinta'].map(opt => (
+                                         {['Solo el Gerente', 'Firma Conjunta', 'Firma Indistinta'].map(opt => {
 
-                                             <label key={opt} className="flex items-center space-x-2">
+                                             const disabled = opt !== 'Solo el Gerente' && !canMultiSign;
 
-                                                 <input type="radio" name="legalSignaturePowers" value={opt} checked={formData.legalSignaturePowers === opt} onChange={handleChange} className="text-sbs-blue focus:ring-sbs-blue" />
+                                             return (
+                                             <label key={opt} className={`flex items-center space-x-2 ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}>
+
+                                                 <input type="radio" name="legalSignaturePowers" value={opt} disabled={disabled} checked={formData.legalSignaturePowers === opt} onChange={handleChange} className="text-sbs-blue focus:ring-sbs-blue" />
 
                                                  <span className="text-sm">{opt}</span>
 
                                              </label>
+                                             );
 
-                                         ))}
+                                         })}
 
                                      </div>
+
+                                     {!canMultiSign && <p className="text-amber-600 text-xs mt-1">La firma conjunta o indistinta requiere 2 o más gerentes. Designa un segundo gerente en el paso de socios para habilitarla.</p>}
 
                                      {errors.legalSignaturePowers && <p className="text-red-500 text-xs mt-1 font-bold">{errors.legalSignaturePowers as string}</p>}
 
@@ -786,19 +808,25 @@ const PostPaymentForm: React.FC<PostPaymentFormProps> = ({ formData, updateFormD
 
                                      <div className="space-y-2">
 
-                                         {['Solo el Gerente', 'Firma Conjunta', 'Firma Indistinta'].map(opt => (
+                                         {['Solo el Gerente', 'Firma Conjunta', 'Firma Indistinta'].map(opt => {
 
-                                             <label key={opt} className="flex items-center space-x-2">
+                                             const disabled = opt !== 'Solo el Gerente' && !canMultiSign;
 
-                                                 <input type="radio" name="bankPowers" value={opt} checked={formData.bankPowers === opt} onChange={handleChange} className="text-sbs-blue focus:ring-sbs-blue" />
+                                             return (
+                                             <label key={opt} className={`flex items-center space-x-2 ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}>
+
+                                                 <input type="radio" name="bankPowers" value={opt} disabled={disabled} checked={formData.bankPowers === opt} onChange={handleChange} className="text-sbs-blue focus:ring-sbs-blue" />
 
                                                  <span className="text-sm">{opt}</span>
 
                                              </label>
+                                             );
 
-                                         ))}
+                                         })}
 
                                      </div>
+
+                                     {!canMultiSign && <p className="text-amber-600 text-xs mt-1">Requiere 2 o más gerentes para firma conjunta o indistinta.</p>}
 
                                      {errors.bankPowers && <p className="text-red-500 text-xs mt-1 font-bold">{errors.bankPowers as string}</p>}
 

@@ -458,8 +458,10 @@ exports.onVentaUpdate = onDocumentUpdated(
     } else if (statusNew === "pagado") {
       templateType = "pago_exitoso";
 
-    // 4. Documentos constitutivos listos para revisión/aprobación del cliente
-    } else if (statusNew === "documentos_en_revision") {
+    // 4. Documentos constitutivos listos para revisión/aprobación del cliente.
+    //    SOLO en la transición real hacia ese estado: si el status ya estaba ahí
+    //    (p. ej. solo cambió el pago), no se reenvía el correo "documentos listos".
+    } else if (statusChanged && statusNew === "documentos_en_revision") {
       templateType = "documentos_listos";
 
     // 5. ONAPI aprobado
@@ -581,17 +583,23 @@ exports.customerComments = onRequest(
     }
 
     try {
-      const { saleId } = await verifyCustomerAccess(token, pin);
+      const { saleId, saleData } = await verifyCustomerAccess(token, pin);
       const commentsRef = db.collection("ventas").doc(saleId).collection("comments");
 
       if (action === "list") {
         const snapshot = await commentsRef.orderBy("createdAt", "desc").limit(20).get();
-        const comments = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-          // Serializar Timestamp de Firestore a ISO string
-          createdAt: doc.data().createdAt?.toDate?.()?.toISOString() ?? null,
-        }));
+        const comments = snapshot.docs
+          .filter((doc) => doc.data().internal !== true) // ocultar notas internas de SBS
+          .map((doc) => {
+            const { internal, ...rest } = doc.data(); // no exponer el flag al cliente
+            void internal;
+            return {
+              id: doc.id,
+              ...rest,
+              // Serializar Timestamp de Firestore a ISO string
+              createdAt: doc.data().createdAt?.toDate?.()?.toISOString() ?? null,
+            };
+          });
         return res.json(comments);
       }
 
@@ -604,6 +612,25 @@ exports.customerComments = onRequest(
           authorRole: "customer",
           createdAt: FieldValue.serverTimestamp(),
         });
+
+        // Avisar a SBS por correo para que el expediente siga caminando.
+        try {
+          const nombre = saleData.applicant?.names
+            ? `${saleData.applicant.names} ${saleData.applicant.surnames || ""}`.trim()
+            : (saleData.nombre || "El cliente");
+          const empresa = saleData.companyName || "su empresa";
+          const orderId = saleData.orderId || saleId;
+          await sendEmail({
+            to: "ventas@formalizate.app",
+            subject: `💬 Nuevo mensaje del cliente — ${empresa}`,
+            html: `<p><strong>${nombre}</strong> respondió desde su panel sobre el expediente de <strong>${empresa}</strong> (Orden: ${orderId}):</p>
+                   <blockquote style="border-left:3px solid #1D3557;padding-left:12px;color:#555;">${message.trim()}</blockquote>
+                   <p>Revísalo y responde desde el panel de administración.</p>`,
+          });
+        } catch (mailErr) {
+          console.error("customerComments: aviso a SBS falló (comentario sí se guardó):", mailErr);
+        }
+
         return res.json({ ok: true });
       }
 
@@ -1355,22 +1382,42 @@ exports.adminAddComment = onRequest(
       return res.status(401).json({ error: err.message });
     }
 
-    const { saleId, message } = req.body || {};
+    const { saleId, message, internal } = req.body || {};
     if (!saleId || !message?.trim()) {
       return res.status(400).json({ error: "saleId y message son requeridos" });
     }
+    const esInterna = !!internal; // nota interna: no se le muestra ni se le notifica al cliente
 
     try {
-      await db
-        .collection("ventas")
-        .doc(saleId)
-        .collection("comments")
-        .add({
-          message: message.trim(),
-          authorRole: "admin",
-          author: "Admin Team",
-          createdAt: FieldValue.serverTimestamp(),
-        });
+      const saleRef = db.collection("ventas").doc(saleId);
+      await saleRef.collection("comments").add({
+        message: message.trim(),
+        authorRole: "admin",
+        author: "Admin Team",
+        internal: esInterna,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+
+      // Notificar al cliente por correo SOLO si es un mensaje para él (no nota interna).
+      if (!esInterna) try {
+        const data = (await saleRef.get()).data() || {};
+        const email = data.email || data.userEmail || data.applicant?.email;
+        if (email) {
+          const nombre = data.applicant?.names ? ` ${data.applicant.names}` : "";
+          const empresa = data.companyName || "tu empresa";
+          await sendEmail({
+            to: email,
+            subject: `Tienes un nuevo mensaje sobre tu expediente — ${empresa}`,
+            html: `<p>Hola${nombre},</p>
+                   <p>El equipo de Formalízate te ha enviado un mensaje sobre el expediente de <strong>${empresa}</strong>:</p>
+                   <blockquote style="border-left:3px solid #1D3557;padding-left:12px;color:#555;">${message.trim()}</blockquote>
+                   <p>Para responder, entra a tu panel y déjanos tu respuesta desde ahí:</p>
+                   <p><a href="${CUSTOMER_DASHBOARD_URL}">${CUSTOMER_DASHBOARD_URL}</a></p>`,
+          });
+        }
+      } catch (mailErr) {
+        console.error("adminAddComment: aviso al cliente falló (comentario sí se guardó):", mailErr);
+      }
 
       return res.json({ ok: true });
     } catch (err) {
