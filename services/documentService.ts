@@ -41,10 +41,19 @@ const uploadFileAndGetPath = async (file: File, folder: string): Promise<string>
     return snapshot.ref.fullPath;
 };
 
+// Cache de subidas por CONTENIDO (nombre|tamaño|fecha) dentro de un mismo guardado.
+// Evita que el mismo archivo se suba varias veces — p. ej. cuando una persona es
+// socio Y titular, sus documentos venían en `partners[]` y en `titulars[]` y se
+// subían por separado, dejando copias duplicadas en Storage.
+type UploadCache = Map<string, Promise<string>>;
+
+const fileKey = (f: File): string => `${f.name}|${f.size}|${f.lastModified}`;
+
 const resolveUpload = async (
     fileInput: Uploadable,
     folder: string,
-    description: string
+    description: string,
+    cache?: UploadCache
 ): Promise<string | null> => {
     if (!fileInput) return null;
 
@@ -53,6 +62,16 @@ const resolveUpload = async (
     }
 
     if (isBrowserFile(fileInput)) {
+        if (cache) {
+            const key = fileKey(fileInput);
+            const existing = cache.get(key);
+            if (existing) return existing;
+            const pending = uploadFileAndGetPath(fileInput, folder).catch(() => {
+                throw new Error(`No se pudo subir ${description}.`);
+            });
+            cache.set(key, pending);
+            return pending;
+        }
         try {
             return await uploadFileAndGetPath(fileInput, folder);
         } catch {
@@ -63,11 +82,11 @@ const resolveUpload = async (
     return null;
 };
 
-const serializePartners = async (partners: Partner[] = []): Promise<SerializedPartner[]> => {
+const serializePartners = async (partners: Partner[] = [], cache?: UploadCache): Promise<SerializedPartner[]> => {
     return Promise.all(partners.map(async (partner, index) => {
         const [idFront, idBack] = await Promise.all([
-            resolveUpload(partner.idFront, 'identidades', `SOCIO ${index + 1} (Frente)`),
-            resolveUpload(partner.idBack, 'identidades', `SOCIO ${index + 1} (Dorso)`)
+            resolveUpload(partner.idFront, 'identidades', `SOCIO ${index + 1} (Frente)`, cache),
+            resolveUpload(partner.idBack, 'identidades', `SOCIO ${index + 1} (Dorso)`, cache)
         ]);
 
         return {
@@ -91,7 +110,7 @@ const titularHasData = (titular: Titular): boolean => {
     return hasText || hasFiles;
 };
 
-const serializeTitulars = async (titulars: Titular[] = []): Promise<SerializedTitular[]> => {
+const serializeTitulars = async (titulars: Titular[] = [], cache?: UploadCache): Promise<SerializedTitular[]> => {
     const filtered = titulars.filter(titularHasData);
 
     if (filtered.length === 0) {
@@ -100,8 +119,8 @@ const serializeTitulars = async (titulars: Titular[] = []): Promise<SerializedTi
 
     return Promise.all(filtered.map(async (titular, index) => {
         const [idFront, idBack] = await Promise.all([
-            resolveUpload(titular.idFront, 'identidades', `TITULAR ${index + 1} (Frente)`),
-            resolveUpload(titular.idBack, 'identidades', `TITULAR ${index + 1} (Dorso)`)
+            resolveUpload(titular.idFront, 'identidades', `TITULAR ${index + 1} (Frente)`, cache),
+            resolveUpload(titular.idBack, 'identidades', `TITULAR ${index + 1} (Dorso)`, cache)
         ]);
 
         return {
@@ -123,12 +142,15 @@ export const saveFullApplication = async (data: AppFormData): Promise<any> => {
     } = data;
 
     try {
+        // Un solo cache por guardado: el mismo archivo se sube una única vez.
+        const uploadCache: UploadCache = new Map();
+
         const [logoUrl, onapiCertUrl, receiptUrl, partnersWithUrls, titularsWithUrls] = await Promise.all([
-            resolveUpload(logoFile, 'logos', 'LOGO'),
-            resolveUpload(onapiCertificate, 'certificados', 'CERTIFICADO ONAPI'),
-            resolveUpload(paymentReceipt, 'comprobantes', 'COMPROBANTE DE PAGO'),
-            serializePartners(partners),
-            serializeTitulars(titulars)
+            resolveUpload(logoFile, 'logos', 'LOGO', uploadCache),
+            resolveUpload(onapiCertificate, 'certificados', 'CERTIFICADO ONAPI', uploadCache),
+            resolveUpload(paymentReceipt, 'comprobantes', 'COMPROBANTE DE PAGO', uploadCache),
+            serializePartners(partners, uploadCache),
+            serializeTitulars(titulars, uploadCache)
         ]);
 
         const currentUser = auth.currentUser;
