@@ -624,7 +624,7 @@ exports.customerComments = onRequest(
             to: "ventas@formalizate.app",
             subject: `💬 Nuevo mensaje del cliente — ${empresa}`,
             html: `<p><strong>${nombre}</strong> respondió desde su panel sobre el expediente de <strong>${empresa}</strong> (Orden: ${orderId}):</p>
-                   <blockquote style="border-left:3px solid #1D3557;padding-left:12px;color:#555;">${message.trim()}</blockquote>
+                   <blockquote style="border-left:3px solid #1D3557;padding-left:12px;color:#555;">${message.trim().replace(/\n/g, "<br>")}</blockquote>
                    <p>Revísalo y responde desde el panel de administración.</p>`,
           });
         } catch (mailErr) {
@@ -1405,14 +1405,27 @@ exports.adminAddComment = onRequest(
         if (email) {
           const nombre = data.applicant?.names ? ` ${data.applicant.names}` : "";
           const empresa = data.companyName || "tu empresa";
+
+          // Enlace CON token (si no, el panel muestra "Ups, algo salió mal").
+          const firestoreId = data.firestoreId || saleId;
+          const customerSecret = process.env.CUSTOMER_MAGIC_SECRET;
+          let dashboardUrl = CUSTOMER_DASHBOARD_URL;
+          if (customerSecret && firestoreId) {
+            const t = signToken(
+              { saleId: firestoreId, role: "customer", issuedAt: Math.floor(Date.now() / 1000) },
+              customerSecret
+            );
+            dashboardUrl = `${CUSTOMER_DASHBOARD_URL}/?token=${t}`;
+          }
+
           await sendEmail({
             to: email,
             subject: `Tienes un nuevo mensaje sobre tu expediente — ${empresa}`,
             html: `<p>Hola${nombre},</p>
                    <p>El equipo de Formalízate te ha enviado un mensaje sobre el expediente de <strong>${empresa}</strong>:</p>
-                   <blockquote style="border-left:3px solid #1D3557;padding-left:12px;color:#555;">${message.trim()}</blockquote>
-                   <p>Para responder, entra a tu panel y déjanos tu respuesta desde ahí:</p>
-                   <p><a href="${CUSTOMER_DASHBOARD_URL}">${CUSTOMER_DASHBOARD_URL}</a></p>`,
+                   <blockquote style="border-left:3px solid #1D3557;padding-left:12px;color:#555;">${message.trim().replace(/\n/g, "<br>")}</blockquote>
+                   <p>Para responder, entra a tu panel y déjanos tu respuesta desde ahí (te pedirá tu PIN):</p>
+                   <p><a href="${dashboardUrl}" style="color:#1D3557;font-weight:bold;">Entrar a mi panel</a></p>`,
           });
         }
       } catch (mailErr) {
