@@ -10,6 +10,9 @@ interface State {
 }
 
 class ErrorBoundary extends Component<Props, State> {
+  // Sin @types/react instalado, tsc no ve `props` en Component; declaración type-only (no emite JS)
+  declare readonly props: Props;
+
   public state: State = {
     hasError: false,
     error: null

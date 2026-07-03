@@ -96,7 +96,7 @@ const App: React.FC = () => {
         fiscalClosing: FISCAL_CLOSING_DATE,
         socialCapital: 100000,
         partners: [],
-        manager: { type: 'Socio', name: '', idNumber: '', nationality: 'República Dominicana' },
+        manager: { type: 'Socio', name: '', documentType: 'Cédula', idNumber: '', nationality: 'República Dominicana' },
         managementDuration: MANAGEMENT_DURATION,
         packageName: 'Essential 360',
         paymentStatus: 'unpaid',

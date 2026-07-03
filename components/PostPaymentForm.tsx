@@ -323,7 +323,7 @@ const PostPaymentForm: React.FC<PostPaymentFormProps> = ({ formData, updateFormD
             const valueUsd = conversionValueByPackage[formData.packageName || 'Essential 360'] ?? 667;
             const transactionId = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
             if (typeof window !== 'undefined' && typeof (window as Window & { gtag?: (...args: unknown[]) => void }).gtag === 'function') {
-                (window as Window & { gtag: (...args: unknown[]) => void }).gtag('event', 'conversion', {
+                (window as unknown as Window & { gtag: (...args: unknown[]) => void }).gtag('event', 'conversion', {
                     send_to: 'AW-17948166548/PrakCPafovgbEJSTre5C',
                     value: valueUsd,
                     currency: 'USD',

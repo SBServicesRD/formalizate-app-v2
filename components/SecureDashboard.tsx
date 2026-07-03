@@ -18,7 +18,7 @@ const SecureDashboard: React.FC<SecureDashboardProps> = ({ user, formData, onExi
     useEffect(() => {
         const verifyPayment = async () => {
             if (!user) {
-                setStep(AppStep.Landing);
+                setStep(AppStep.StepTypeSelection);
                 return;
             }
 
@@ -33,12 +33,12 @@ const SecureDashboard: React.FC<SecureDashboardProps> = ({ user, formData, onExi
                 } else {
                     setIsVerified(false);
                     // Forzar redirección si el servidor dice que no ha pagado
-                    setTimeout(() => setStep(AppStep.Landing), 3000); 
+                    setTimeout(() => setStep(AppStep.StepTypeSelection), 3000); 
                 }
             } catch (err) {
                 setError(err instanceof Error ? err.message : 'Un error desconocido ocurrió.');
                 setIsVerified(false);
-                setTimeout(() => setStep(AppStep.Landing), 3000);
+                setTimeout(() => setStep(AppStep.StepTypeSelection), 3000);
             }
         };
 
