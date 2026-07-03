@@ -202,18 +202,23 @@ const pathToDownloadUrl = async (value) => {
   if (typeof value !== 'string' || value === '' || /^https?:\/\//i.test(value)) {
     return value;
   }
-  try {
-    const token = crypto.randomUUID();
-    await storageBucket.file(value).setMetadata({
-      metadata: { firebaseStorageDownloadTokens: token }
-    });
-    return `https://firebasestorage.googleapis.com/v0/b/${STORAGE_BUCKET}/o/${encodeURIComponent(value)}?alt=media&token=${token}`;
-  } catch (e) {
-    // Nunca abortamos el guardado por esto: conservamos la ruta para no perder
-    // el expediente (el Admin SDK puede recuperar el archivo por su ruta).
-    console.error('⚠️ No se pudo generar URL de descarga para', value, '-', e.message);
-    return value;
+  const token = crypto.randomUUID();
+  const file = storageBucket.file(value);
+  // Reintentos: el archivo recién subido puede tardar en propagarse; un fallo
+  // transitorio dejaba la RUTA cruda guardada (documento que no abre en el panel).
+  for (let intento = 1; intento <= 3; intento++) {
+    try {
+      await file.setMetadata({ metadata: { firebaseStorageDownloadTokens: token } });
+      return `https://firebasestorage.googleapis.com/v0/b/${STORAGE_BUCKET}/o/${encodeURIComponent(value)}?alt=media&token=${token}`;
+    } catch (e) {
+      console.error(`⚠️ setMetadata intento ${intento}/3 falló para ${value}: ${e.message}`);
+      if (intento < 3) await new Promise((r) => setTimeout(r, intento * 500));
+    }
   }
+  // Último recurso: conservar la ruta para no perder el expediente (rescatable
+  // luego con el Admin SDK). El panel ya no rompe: muestra "re-subir".
+  console.error('⚠️ No se pudo generar URL de descarga tras 3 intentos para', value, '— se guarda la ruta.');
+  return value;
 };
 
 // Convierte rutas -> URLs en todos los campos de archivo del expediente.
@@ -376,9 +381,11 @@ function sanitizeOutput(text) {
     .replace(/\s+/g, ' ')
     .trim();
   
-  // Limitar longitud máxima (prevención adicional)
-  if (sanitized.length > 500) {
-    sanitized = sanitized.substring(0, 500);
+  // Limitar longitud máxima (prevención adicional).
+  // 2000 chars: un objeto social amplio (multi-actividad) redactado por la IA
+  // ronda 900-1400 chars; 500 los cortaba a media frase.
+  if (sanitized.length > 2000) {
+    sanitized = sanitized.substring(0, 2000);
   }
   
   return sanitized;
@@ -440,8 +447,8 @@ Actividad declarada por el usuario (extrae solo palabras clave comerciales): "${
 
 Responde ÚNICAMENTE con el objeto social redactado, sin títulos ni explicaciones.`;
 
-    // Llamada directa a la API REST de Gemini (usando gemini-2.0-flash)
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+    // Llamada directa a la API REST de Gemini (usando gemini-2.5-flash)
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
     
     const response = await fetch(apiUrl, {
       method: 'POST',
@@ -454,8 +461,12 @@ Responde ÚNICAMENTE con el objeto social redactado, sin títulos ni explicacion
           parts: [{ text: prompt }]
         }],
         generationConfig: {
-          maxOutputTokens: 600,
+          maxOutputTokens: 1024,
           temperature: 0.1,
+          // gemini-2.5-flash trae "thinking" activado por defecto y consume el
+          // presupuesto de salida (finishReason: MAX_TOKENS => texto truncado).
+          // Lo desactivamos para que el objeto social salga completo.
+          thinkingConfig: { thinkingBudget: 0 },
         }
       })
     });
@@ -479,8 +490,8 @@ Responde ÚNICAMENTE con el objeto social redactado, sin títulos ni explicacion
     const optimizedText = sanitizeOutput(rawText) || text;
     
     // Validación final: Si después de sanitizar está vacío o es sospechoso, usar texto original limpio
-    const finalText = optimizedText.length > 0 && optimizedText.length <= 500 
-      ? optimizedText 
+    const finalText = optimizedText.length > 0 && optimizedText.length <= 2000
+      ? optimizedText
       : sanitizeOutput(text); // Fallback seguro
 
     // PII Security: No imprimir contenido del texto que puede contener datos personales

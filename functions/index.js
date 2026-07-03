@@ -861,6 +861,26 @@ const ADMIN_DASHBOARD_URL = process.env.ADMIN_DASHBOARD_URL || "https://admin.fo
  * Verifica que el x-admin-token header sea válido.
  * Retorna el payload si OK, lanza Error si no.
  */
+/** Parsea una lista de emails separada por comas desde una env var. */
+function parseEmailList(envVar) {
+  return (process.env[envVar] || "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+/** Rol de un email según las allowlists: 'admin', 'viewer' o null. */
+function roleForEmail(email) {
+  const e = (email || "").toLowerCase().trim();
+  if (parseEmailList("ADMIN_EMAILS").includes(e)) return "admin";
+  if (parseEmailList("ADMIN_VIEWER_EMAILS").includes(e)) return "viewer";
+  return null;
+}
+
+/**
+ * Verifica el x-admin-token. Acepta rol 'admin' (acceso total) o 'viewer'
+ * (solo lectura). Retorna el payload (con .role) si OK, lanza Error si no.
+ */
 function verifyAdminAccess(req) {
   const token = req.headers["x-admin-token"];
   if (!token) throw new Error("Token de admin requerido");
@@ -869,22 +889,32 @@ function verifyAdminAccess(req) {
   if (!secret) throw new Error("Configuración del servidor incompleta");
 
   const payload = verifyToken(String(token), secret);
-  if (!payload || payload.role !== "admin") throw new Error("Token inválido o expirado");
+  if (!payload || (payload.role !== "admin" && payload.role !== "viewer")) {
+    throw new Error("Token inválido o expirado");
+  }
 
   // Verificar expiración
   if (payload.exp && Math.floor(Date.now() / 1000) > payload.exp) {
     throw new Error("Token expirado — solicita un nuevo enlace");
   }
 
-  // Verificar email en lista de admins
-  const adminEmails = (process.env.ADMIN_EMAILS || "")
-    .split(",")
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
+  // El email debe seguir en la allowlist y su rol actual coincidir con el del
+  // token (así, si cambias a alguien de lista, su token viejo deja de servir).
+  const role = roleForEmail(payload.email);
+  if (!role || role !== payload.role) throw new Error("Email no autorizado");
 
-  const email = (payload.email || "").toLowerCase();
-  if (!adminEmails.includes(email)) throw new Error("Email no autorizado como admin");
+  return payload;
+}
 
+/**
+ * Como verifyAdminAccess pero EXIGE rol 'admin' (escritura). Un viewer queda
+ * bloqueado en el servidor aunque manipule la petición o el frontend.
+ */
+function verifyAdminWrite(req) {
+  const payload = verifyAdminAccess(req);
+  if (payload.role !== "admin") {
+    throw new Error("Modo solo lectura: no tienes permiso para modificar");
+  }
   return payload;
 }
 
@@ -900,13 +930,9 @@ exports.adminSendMagicLink = onRequest(
     const secret = process.env.ADMIN_MAGIC_SECRET;
     if (!secret) return res.status(500).json({ error: "Error de configuración del servidor" });
 
-    const adminEmails = (process.env.ADMIN_EMAILS || "")
-      .split(",")
-      .map((e) => e.trim().toLowerCase())
-      .filter(Boolean);
-
     const normalizedEmail = email.toLowerCase().trim();
-    if (!adminEmails.includes(normalizedEmail)) {
+    const role = roleForEmail(normalizedEmail);
+    if (!role) {
       // No revelar si el email es válido o no (seguridad)
       console.warn(`adminSendMagicLink: email no autorizado: ${normalizedEmail}`);
       return res.json({ sent: true }); // Respuesta genérica
@@ -915,7 +941,7 @@ exports.adminSendMagicLink = onRequest(
     const now = Math.floor(Date.now() / 1000);
     const payload = {
       email: normalizedEmail,
-      role: "admin",
+      role, // 'admin' (acceso total) o 'viewer' (solo lectura)
       issuedAt: now,
       exp: now + 24 * 60 * 60, // 24 horas
     };
@@ -971,7 +997,7 @@ exports.adminVerifyToken = onRequest(
       if (!secret) return res.status(500).json({ error: "Error de configuración" });
 
       const payload = verifyToken(String(token), secret);
-      if (!payload || payload.role !== "admin") {
+      if (!payload || (payload.role !== "admin" && payload.role !== "viewer")) {
         return res.status(401).json({ error: "Token inválido" });
       }
 
@@ -979,17 +1005,13 @@ exports.adminVerifyToken = onRequest(
         return res.status(401).json({ error: "Token expirado" });
       }
 
-      const adminEmails = (process.env.ADMIN_EMAILS || "")
-        .split(",")
-        .map((e) => e.trim().toLowerCase())
-        .filter(Boolean);
-
       const email = (payload.email || "").toLowerCase();
-      if (!adminEmails.includes(email)) {
+      const role = roleForEmail(email);
+      if (!role || role !== payload.role) {
         return res.status(403).json({ error: "Email no autorizado" });
       }
 
-      return res.json({ email: payload.email, name: payload.name || email });
+      return res.json({ email: payload.email, name: payload.name || email, role });
     } catch (err) {
       return res.status(401).json({ error: "Token inválido" });
     }
@@ -1072,7 +1094,7 @@ exports.adminUpdateSale = onRequest(
     if (req.method !== "POST") return res.status(405).json({ error: "Método no permitido" });
 
     try {
-      verifyAdminAccess(req);
+      verifyAdminWrite(req);
     } catch (err) {
       return res.status(401).json({ error: err.message });
     }
@@ -1106,7 +1128,7 @@ exports.adminUpdateDocumentUrl = onRequest(
     if (req.method !== "POST") return res.status(405).json({ error: "Método no permitido" });
 
     try {
-      verifyAdminAccess(req);
+      verifyAdminWrite(req);
     } catch (err) {
       return res.status(401).json({ error: err.message });
     }
@@ -1165,6 +1187,8 @@ exports.adminReopenDocsApproval = onRequest(
 
     const { saleId } = req.body || {};
     if (!saleId) return res.status(400).json({ error: "saleId requerido" });
+    // Re-verificar como escritura (verifyAdminAccess arriba solo confirmó identidad).
+    try { verifyAdminWrite(req); } catch (err) { return res.status(401).json({ error: err.message }); }
 
     try {
       const saleRef = db.collection("ventas").doc(saleId);
@@ -1237,7 +1261,7 @@ exports.adminUpdateFirmaDigital = onRequest(
     if (req.method !== "POST") return res.status(405).json({ error: "Método no permitido" });
 
     try {
-      verifyAdminAccess(req);
+      verifyAdminWrite(req);
     } catch (err) {
       return res.status(401).json({ error: err.message });
     }
@@ -1377,7 +1401,7 @@ exports.adminAddComment = onRequest(
     if (req.method !== "POST") return res.status(405).json({ error: "Método no permitido" });
 
     try {
-      verifyAdminAccess(req);
+      verifyAdminWrite(req);
     } catch (err) {
       return res.status(401).json({ error: err.message });
     }
