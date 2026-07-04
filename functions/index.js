@@ -364,13 +364,52 @@ exports.onVentaSyncNotion = onDocumentCreated(
       const orderId = data.orderId || event.params.ventaId;
       const empresa = data.companyName || nombre;
       const status = data.status || "";
+      const paymentStatus = data.paymentStatus || "";
       await fetch(NOTION_BRIDGE_WEBHOOK, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, phone, nombre, empresa, plan, monto, orderId, status, event: "create" }),
+        body: JSON.stringify({ email, phone, nombre, empresa, plan, monto, orderId, status, paymentStatus, event: "create" }),
       });
     } catch (error) {
       console.error("Puente Notion (onVentaSyncNotion) falló:", error);
+    }
+  }
+);
+
+// Cierra el lead en Notion cuando el pago se CONFIRMA después de crear la venta
+// (transferencias: la venta nace pending_confirmation y el admin la marca paid;
+// onVentaSyncNotion solo dispara en el create, así que sin esto el lead quedaba abierto)
+exports.onVentaPagoConfirmado = onDocumentUpdated(
+  {
+    document: "ventas/{ventaId}",
+    database: "formalizate-app-prod",
+    region: "us-central1",
+  },
+  async (event) => {
+    try {
+      const before = event.data?.before?.data() || {};
+      const after = event.data?.after?.data() || {};
+      if (before.paymentStatus === "paid" || after.paymentStatus !== "paid") return;
+      const email = after.email || after.userEmail || after.applicant?.email || "";
+      const phone = after.telefono || after.phone || after.applicant?.phone || "";
+      let nombre = "Cliente";
+      if (after.applicant?.names) {
+        nombre = `${after.applicant.names} ${after.applicant.surnames || ""}`.trim();
+      } else if (after.nombre) {
+        nombre = after.nombre;
+      }
+      const empresa = after.companyName || nombre;
+      const plan = after.plan || after.packageName || "";
+      const monto = after.monto || after.totalAmount || "";
+      const orderId = after.orderId || event.params.ventaId;
+      const status = after.status || "";
+      await fetch(NOTION_BRIDGE_WEBHOOK, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, phone, nombre, empresa, plan, monto, orderId, status, paymentStatus: "paid", event: "pagado" }),
+      });
+    } catch (error) {
+      console.error("Puente Notion (onVentaPagoConfirmado) falló:", error);
     }
   }
 );
