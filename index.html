@@ -42,6 +42,9 @@
       gtag('js', new Date());
 
       gtag('config', 'G-H5NN987LKF');
+      // Tag de Google Ads: sin este config, el evento de conversión de compra
+      // (PostPaymentForm, send_to AW-17948166548/...) se descarta y Ads reporta 0.
+      gtag('config', 'AW-17948166548');
     </script>
 
     <!-- Meta Pixel Code -->
