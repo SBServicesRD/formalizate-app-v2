@@ -7,6 +7,10 @@ const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage");
 const nodemailer = require("nodemailer");
 const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
+const { execFileSync } = require("child_process");
 
 // ============================================================
 // CONFIGURACIÓN GLOBAL
@@ -415,6 +419,120 @@ exports.onVentaPagoConfirmado = onDocumentUpdated(
       });
     } catch (error) {
       console.error("Puente Notion (onVentaPagoConfirmado) falló:", error);
+    }
+  }
+);
+
+// ============================================================
+// GENERAR EXPEDIENTE — corre el motor determinista (docgen/) en la nube.
+// El texto legal vive CONGELADO en docgen/ (copias byte-idénticas del motor
+// local de 01_DIGITACION); esta función solo lo envuelve: lee la venta,
+// mapea, ejecuta el generador como proceso hijo (mismo contrato DATOS_FILE/
+// OUT_DIR que el .bat local) y sube los .docx a Storage.
+// NO toca estatutosUrl/asambleaUrl/pdrUrl: el admin revisa los .docx y los
+// sube por el flujo existente de aprobación. Solo escribe el metadato
+// aditivo `expedienteGenerado`.
+// ============================================================
+exports.generarExpediente = onRequest(
+  { region: "us-central1", cors: true, timeoutSeconds: 300, memory: "512MiB" },
+  async (req, res) => {
+    if (req.method !== "POST") {
+      return res.status(405).json({ error: "Método no permitido" });
+    }
+    let adminPayload;
+    try {
+      adminPayload = verifyAdminWrite(req);
+    } catch (err) {
+      return res.status(401).json({ error: err.message });
+    }
+    const { ventaId, generos, fecha } = req.body || {};
+    if (!ventaId) return res.status(400).json({ error: "ventaId requerido" });
+
+    try {
+      const snap = await db.collection("ventas").doc(String(ventaId)).get();
+      if (!snap.exists) return res.status(404).json({ error: "Venta no encontrada" });
+      const venta = snap.data();
+
+      // Compuerta: solo con pago confirmado (política: 100% por adelantado).
+      if (venta.paymentStatus !== "paid") {
+        return res.status(409).json({
+          error: "El pago no está confirmado (paymentStatus=" + (venta.paymentStatus || "sin definir") +
+            "). Los documentos se generan solo con pago confirmado.",
+        });
+      }
+
+      const isEirl = /eirl/i.test(venta.companyType || "");
+      const dir = path.join(__dirname, "docgen", isEirl ? "eirl" : "srl");
+      const generosArr = Array.isArray(generos)
+        ? generos
+        : String(generos || "").split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
+      const opts = { fecha: fecha || new Date(), generos: generosArr };
+      const datos = isEirl
+        ? require(path.join(dir, "mapear_eirl.js")).mapearEirl(venta, opts)
+        : require(path.join(dir, "mapear_db.js")).mapear(venta, opts);
+
+      // Ejecutar el motor congelado como proceso hijo (fresco en cada corrida)
+      const stamp = Date.now();
+      const tmpDatos = path.join(os.tmpdir(), "datos-" + stamp + ".json");
+      const outDir = path.join(os.tmpdir(), "gen-" + stamp);
+      fs.writeFileSync(tmpDatos, JSON.stringify(datos), "utf8");
+      try {
+        execFileSync(process.execPath,
+          [path.join(dir, isEirl ? "generar_constitucion_eirl.js" : "generar_constitucion_srl.js")],
+          { env: { ...process.env, DATOS_FILE: tmpDatos, OUT_DIR: outDir }, stdio: "pipe", timeout: 240000 });
+      } finally {
+        if (fs.existsSync(tmpDatos)) fs.unlinkSync(tmpDatos);
+      }
+
+      const files = fs.existsSync(outDir) ? fs.readdirSync(outDir).filter((f) => f.endsWith(".docx")) : [];
+      if (!files.length) throw new Error("El generador no produjo documentos");
+
+      // Subir a Storage bajo una carpeta versionada por fecha (regenerar nunca pisa)
+      const generadoEn = new Date().toISOString();
+      const carpeta = "ventas/" + ventaId + "/generados/" + generadoEn.slice(0, 10) + "-" + stamp;
+      const bucket = getStorage(app).bucket(STORAGE_BUCKET);
+      const documentos = [];
+      for (const f of files) {
+        const objectPath = carpeta + "/" + f;
+        await bucket.upload(path.join(outDir, f), {
+          destination: objectPath,
+          metadata: { contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" },
+        });
+        const url = await buildDownloadUrl(objectPath);
+        documentos.push({ nombre: f, path: objectPath, url });
+        fs.unlinkSync(path.join(outDir, f));
+      }
+      fs.rmdirSync(outDir);
+
+      await db.collection("ventas").doc(String(ventaId)).update({
+        expedienteGenerado: {
+          archivos: documentos,
+          generadoEn,
+          por: adminPayload.email || "admin",
+          tipo: isEirl ? "EIRL" : "SRL",
+        },
+      });
+
+      // Avisos (mismos chequeos que el procesar.js local)
+      const advertencias = [];
+      const personas = isEirl ? [datos.titular] : (datos.socios || []);
+      if (personas.some((p) => p && p._REVISAR_genero)) {
+        advertencias.push("Género no especificado en algún socio/titular — se asumió masculino. Si corresponde, regenerar pasando 'generos' (ej. [\"F\"]).");
+      }
+      const ent = isEirl ? datos.empresa : datos.sociedad;
+      const chk = JSON.stringify({ ...datos, [isEirl ? "empresa" : "sociedad"]: { ...ent, onapiNumero: "" } });
+      if (chk.includes("[COMPLETAR")) {
+        advertencias.push("Quedan campos [COMPLETAR] visibles (en rojo en el .docx): revisarlos antes de enviar.");
+      }
+      if (String(ent && ent.onapiNumero).includes("[COMPLETAR")) {
+        advertencias.push("El No. ONAPI aún no está (normal hasta la aprobación del nombre); no aparece en el cuerpo.");
+      }
+
+      console.log("Expediente generado", ventaId, isEirl ? "EIRL" : "SRL", files.join(", "), "por", adminPayload.email);
+      return res.json({ ok: true, tipo: isEirl ? "EIRL" : "SRL", documentos, advertencias });
+    } catch (err) {
+      console.error("generarExpediente falló:", err);
+      return res.status(500).json({ error: "No se pudo generar el expediente: " + err.message });
     }
   }
 );
