@@ -1,6 +1,7 @@
 import { FormData as AppFormData, Partner, Titular } from '../types';
-import { storage, db, auth } from './firebase'; 
+import { storage, db, auth } from './firebase';
 import { ref, uploadBytes } from 'firebase/storage';
+import { signInAnonymously } from 'firebase/auth';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 
 type Uploadable = File | string | null | undefined;
@@ -26,6 +27,18 @@ type SerializedForm = Omit<AppFormData,
 };
 
 const isBrowserFile = (value: unknown): value is File => typeof File !== 'undefined' && value instanceof File;
+
+// Garantiza una sesión (anónima si el cliente es invitado) ANTES de subir:
+// las reglas de Storage exigen usuario autenticado para escribir. Si la auth
+// anónima fallara, se intenta subir igual (el error real lo daría Storage).
+const ensureUploadAuth = async (): Promise<void> => {
+    if (auth.currentUser) return;
+    try {
+        await signInAnonymously(auth);
+    } catch (e) {
+        console.warn('Auth anónima no disponible; se intenta subir igual:', e);
+    }
+};
 
 // Sube el archivo y devuelve su RUTA en Storage (no la URL de descarga).
 // Generar la URL con getDownloadURL() requiere permiso de LECTURA, que desde
@@ -82,11 +95,11 @@ const resolveUpload = async (
     return null;
 };
 
-const serializePartners = async (partners: Partner[] = [], cache?: UploadCache): Promise<SerializedPartner[]> => {
+const serializePartners = async (partners: Partner[] = [], cache?: UploadCache, carpeta = 'identidades'): Promise<SerializedPartner[]> => {
     return Promise.all(partners.map(async (partner, index) => {
         const [idFront, idBack] = await Promise.all([
-            resolveUpload(partner.idFront, 'identidades', `SOCIO ${index + 1} (Frente)`, cache),
-            resolveUpload(partner.idBack, 'identidades', `SOCIO ${index + 1} (Dorso)`, cache)
+            resolveUpload(partner.idFront, carpeta, `SOCIO ${index + 1} (Frente)`, cache),
+            resolveUpload(partner.idBack, carpeta, `SOCIO ${index + 1} (Dorso)`, cache)
         ]);
 
         return {
@@ -110,7 +123,7 @@ const titularHasData = (titular: Titular): boolean => {
     return hasText || hasFiles;
 };
 
-const serializeTitulars = async (titulars: Titular[] = [], cache?: UploadCache): Promise<SerializedTitular[]> => {
+const serializeTitulars = async (titulars: Titular[] = [], cache?: UploadCache, carpeta = 'identidades'): Promise<SerializedTitular[]> => {
     const filtered = titulars.filter(titularHasData);
 
     if (filtered.length === 0) {
@@ -119,8 +132,8 @@ const serializeTitulars = async (titulars: Titular[] = [], cache?: UploadCache):
 
     return Promise.all(filtered.map(async (titular, index) => {
         const [idFront, idBack] = await Promise.all([
-            resolveUpload(titular.idFront, 'identidades', `TITULAR ${index + 1} (Frente)`, cache),
-            resolveUpload(titular.idBack, 'identidades', `TITULAR ${index + 1} (Dorso)`, cache)
+            resolveUpload(titular.idFront, carpeta, `TITULAR ${index + 1} (Frente)`, cache),
+            resolveUpload(titular.idBack, carpeta, `TITULAR ${index + 1} (Dorso)`, cache)
         ]);
 
         return {
@@ -142,19 +155,31 @@ export const saveFullApplication = async (data: AppFormData): Promise<any> => {
     } = data;
 
     try {
+        // Sesión garantizada (anónima para invitados) antes de subir — las
+        // reglas de Storage exigen auth para escribir.
+        await ensureUploadAuth();
+
         // Un solo cache por guardado: el mismo archivo se sube una única vez.
         const uploadCache: UploadCache = new Map();
+
+        // Carpeta única por solicitud: agrupa las cédulas de ESTE expediente
+        // en vez de mezclarlas en la carpeta plana global.
+        const carpetaIds = `identidades/${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
         const [logoUrl, onapiCertUrl, receiptUrl, partnersWithUrls, titularsWithUrls] = await Promise.all([
             resolveUpload(logoFile, 'logos', 'LOGO', uploadCache),
             resolveUpload(onapiCertificate, 'certificados', 'CERTIFICADO ONAPI', uploadCache),
             resolveUpload(paymentReceipt, 'comprobantes', 'COMPROBANTE DE PAGO', uploadCache),
-            serializePartners(partners, uploadCache),
-            serializeTitulars(titulars, uploadCache)
+            serializePartners(partners, uploadCache, carpetaIds),
+            serializeTitulars(titulars, uploadCache, carpetaIds)
         ]);
 
+        // OJO: la sesión anónima NO cuenta como usuario del cliente — una venta
+        // de invitado debe quedar "huérfana" (sin userId) para que luego
+        // linkSaleToUser pueda vincularla a la cuenta real.
         const currentUser = auth.currentUser;
-        
+        const esUsuarioReal = !!currentUser && !currentUser.isAnonymous;
+
         const payload: SerializedForm & { userId?: string; userEmail?: string | null } = {
             ...(textFields as SerializedForm),
             logoFile: logoUrl,
@@ -162,8 +187,8 @@ export const saveFullApplication = async (data: AppFormData): Promise<any> => {
             paymentReceipt: receiptUrl,
             partners: partnersWithUrls,
             titulars: titularsWithUrls,
-            userId: currentUser?.uid,
-            userEmail: currentUser?.email || null
+            userId: esUsuarioReal ? currentUser.uid : undefined,
+            userEmail: esUsuarioReal ? (currentUser.email || null) : null
         };
 
         const payloadRecord = payload as Record<string, unknown>;

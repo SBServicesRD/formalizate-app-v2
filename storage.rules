@@ -4,28 +4,51 @@ rules_version = '2';
 // Reglas de Cloud Storage — bucket: sbservicesrd.firebasestorage.app
 // ============================================================
 // Contiene datos sensibles: cédulas (frente/dorso), comprobantes de pago,
-// certificados ONAPI, logos.
+// certificados ONAPI, expedientes generados, logos.
 //
-// LECTURA — cerrada a usuarios autenticados.
+// LECTURA — cerrada a usuarios autenticados en todo el bucket.
 //   Los dashboards muestran archivos mediante download URLs con token
-//   (getDownloadURL), que están autorizadas por el token y NO dependen de
-//   esta regla. Por tanto cerrar la lectura NO rompe la visualización, pero
-//   SÍ elimina el acceso público anónimo por path (la fuga de cédulas).
+//   (el token autoriza, no dependen de estas reglas).
 //
-//   Antes (BRECHA CRÍTICA): `allow read;`  → cualquiera en internet, sin
-//   login, podía leer cualquier archivo (cédulas/comprobantes) por su URL.
-//
-// ESCRITURA — se mantiene abierta a propósito (de momento):
-//   El panel admin sube archivos vía magic-link JWT propio, SIN sesión de
-//   Firebase Auth, por lo que `request.auth` es null en ese flujo. Exigir
-//   auth en escritura rompería las subidas del admin (certificados/docs).
-//   TODO (Ola 1): migrar las subidas del admin a una Cloud Function con
-//   verificación de token y entonces exigir auth aquí.
+// ESCRITURA (endurecida 2026-07-05, "Ola 1" completada):
+//   · Rutas de CAPTACIÓN del wizard (identidades/comprobantes/logos/
+//     certificados): requieren usuario autenticado. El wizard inicia sesión
+//     ANÓNIMA automáticamente antes de subir (ensureUploadAuth en
+//     documentService.ts), así los invitados no se rompen.
+//   · ventas/** y TODO lo demás: escritura de clientes PROHIBIDA. Solo
+//     escribe el backend (Admin SDK ignora estas reglas): el admin sube vía
+//     Cloud Function adminUploadDocument; el server y generarExpediente
+//     también usan Admin SDK.
+//   · sellos/**: abierta temporalmente — el storefront de sellos sube
+//     comprobantes sin sesión. TODO: ensureAuth anónimo en sellos-dashboard
+//     cuando lance su fase de pagos, y cerrar esta ruta.
 service firebase.storage {
   match /b/{bucket}/o {
-    match /{allPaths=**} {
+    match /identidades/{path=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+    match /comprobantes/{path=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+    match /logos/{path=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+    match /certificados/{path=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+    match /sellos/{path=**} {
       allow read: if request.auth != null;
       allow write: if true;
+    }
+    // Default: leer solo autenticado; escribir NADIE por cliente
+    // (ventas/**, expedientes generados, y cualquier ruta futura).
+    match /{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if false;
     }
   }
 }

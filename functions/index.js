@@ -1330,6 +1330,58 @@ exports.adminUpdateDocumentUrl = onRequest(
 );
 
 /**
+ * POST (x-admin-token) + { saleId, field, fileName, contentBase64 }
+ * Sube un documento del expediente vía Admin SDK (ignora las reglas de
+ * Storage) → permite cerrar la escritura del bucket a clientes sin sesión.
+ * Solo sube y devuelve el path; el frontend llama después a
+ * adminUpdateDocumentUrl {saleId, field, path} para guardar la URL (flujo ya probado).
+ */
+exports.adminUploadDocument = onRequest(
+  { region: "us-central1", cors: true, memory: "512MiB", timeoutSeconds: 120 },
+  async (req, res) => {
+    if (req.method !== "POST") return res.status(405).json({ error: "Método no permitido" });
+    try {
+      verifyAdminWrite(req);
+    } catch (err) {
+      return res.status(401).json({ error: err.message });
+    }
+    const { saleId, field, fileName, contentBase64 } = req.body || {};
+    const cleanSaleId = String(saleId || "").replace(/[^A-Za-z0-9_-]/g, "");
+    if (!cleanSaleId || !field || !contentBase64) {
+      return res.status(400).json({ error: "saleId, field y contentBase64 son requeridos" });
+    }
+    const ALLOWED_FIELDS = [
+      "estatutosUrl", "asambleaUrl", "pdrUrl",
+      "paymentReceipt", "onapiCertificate", "registroMercantilUrl", "rncUrl",
+      "bankLetterUrl", "tssUrl", "firmaDigitalUrl", "dominioUrl",
+      "dgaUrl", "proveedorEstadoUrl", "webUrl",
+    ];
+    if (!ALLOWED_FIELDS.includes(field)) {
+      return res.status(400).json({ error: `Campo no permitido: ${field}` });
+    }
+    try {
+      const ext = (String(fileName || "").split(".").pop() || "bin")
+        .toLowerCase().replace(/[^a-z0-9]/g, "") || "bin";
+      const buffer = Buffer.from(String(contentBase64), "base64");
+      if (!buffer.length) return res.status(400).json({ error: "Archivo vacío" });
+      const MIME = {
+        pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg",
+        png: "image/png", webp: "image/webp",
+        docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      };
+      const objectPath = `ventas/${cleanSaleId}/documents/${field}.${ext}`;
+      await getStorage(app).bucket(STORAGE_BUCKET).file(objectPath).save(buffer, {
+        metadata: { contentType: MIME[ext] || "application/octet-stream" },
+      });
+      return res.json({ ok: true, path: objectPath, size: buffer.length });
+    } catch (err) {
+      console.error("adminUploadDocument error:", err);
+      return res.status(500).json({ error: "Error subiendo el documento" });
+    }
+  }
+);
+
+/**
  * POST (x-admin-token) + { saleId }
  * Reabre la aprobación tras "cambios solicitados": resetea docsApprovalStatus,
  * garantiza status=documentos_en_revision y REENVÍA al cliente el correo
