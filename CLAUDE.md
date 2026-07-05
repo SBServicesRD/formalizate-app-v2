@@ -91,7 +91,7 @@ Three service tiers defined in `constants.ts` and used throughout:
 ### Firebase / Backend
 
 - **Firestore database**: Always use `formalizate-app-prod` — never the default database.
-- **Cloud Functions** (`functions/index.js`): Node.js 22, region `us-central1`. Email is sent via Gmail SMTP using `ZOHO_PASSWORD` env var. Set it with `firebase functions:config:set zoho.password="..."`.
+- **Cloud Functions** (`functions/index.js`): Node.js 22, region `us-central1`. Email is sent via Gmail SMTP. Secrets (`ZOHO_PASSWORD` — actually the GMAIL app password, misleading legacy name — plus `CUSTOMER/INVESTOR/ADMIN_MAGIC_SECRET`) live in **Google Secret Manager**, bound globally in `setGlobalOptions`. Rotate with `firebase functions:secrets:set <NAME> --project sbservicesrd` + redeploy. `functions/.env` holds only non-sensitive config (allowlists, URLs).
 - **Auth**: Google provider via `firebase/auth`.
 
 ### Styling

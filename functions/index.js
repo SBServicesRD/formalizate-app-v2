@@ -11,7 +11,12 @@ const crypto = require("crypto");
 // ============================================================
 // CONFIGURACIÓN GLOBAL
 // ============================================================
-setGlobalOptions({ region: "us-central1" });
+setGlobalOptions({
+  region: "us-central1",
+  // Secretos desde Secret Manager (ya NO viven en functions/.env):
+  // ZOHO_PASSWORD es la app password de GMAIL (nombre histórico engañoso).
+  secrets: ["ZOHO_PASSWORD", "CUSTOMER_MAGIC_SECRET", "INVESTOR_MAGIC_SECRET", "ADMIN_MAGIC_SECRET"],
+});
 
 const app = initializeApp();
 const db = getFirestore(app, "formalizate-app-prod");
