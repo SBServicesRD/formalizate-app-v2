@@ -1,5 +1,6 @@
 const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
 const { onRequest } = require("firebase-functions/v2/https");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const { initializeApp } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
@@ -19,7 +20,7 @@ setGlobalOptions({
   region: "us-central1",
   // Secretos desde Secret Manager (ya NO viven en functions/.env):
   // ZOHO_PASSWORD es la app password de GMAIL (nombre histórico engañoso).
-  secrets: ["ZOHO_PASSWORD", "CUSTOMER_MAGIC_SECRET", "INVESTOR_MAGIC_SECRET", "ADMIN_MAGIC_SECRET"],
+  secrets: ["ZOHO_PASSWORD", "CUSTOMER_MAGIC_SECRET", "INVESTOR_MAGIC_SECRET", "ADMIN_MAGIC_SECRET", "NOTION_API_KEY"],
 });
 
 const app = initializeApp();
@@ -533,6 +534,138 @@ exports.generarExpediente = onRequest(
     } catch (err) {
       console.error("generarExpediente falló:", err);
       return res.status(500).json({ error: "No se pudo generar el expediente: " + err.message });
+    }
+  }
+);
+
+// ============================================================
+// CONCILIADOR Firestore ↔ Notion — red de seguridad contra desfases.
+// La capa en tiempo real ya existe (puente al pagar + guard de inmunidad en
+// la ingesta); esto es el AUDITOR: cada día compara TODAS las ventas pagadas
+// contra TODOS los leads del Pipeline y avisa por email si un cliente pagado
+// sigue con lead activo (identidad duplicada, carrera, webhook perdido) o si
+// una venta no dejó rastro en Notion. Matching TOLERANTE: email en minúsculas
+// y últimos 10 dígitos del teléfono (más laxo que el puente, a propósito).
+// ============================================================
+const NOTION_PIPELINE_DB = "fc24dcdb-d9d3-4eaf-8525-fb15950c73f1";
+const ESTADOS_NO_ACTIVOS = ["✅ Cerrado", "❌ Perdido"];
+
+const norm10 = (p) => {
+  const d = String(p || "").replace(/\D/g, "");
+  return d.length >= 7 ? d.slice(-10) : null;
+};
+const normEmail = (e) => {
+  const s = String(e || "").trim().toLowerCase();
+  return s.includes("@") ? s : null;
+};
+
+async function leerLeadsPipeline() {
+  const key = process.env.NOTION_API_KEY;
+  if (!key) throw new Error("NOTION_API_KEY no configurada");
+  const leads = [];
+  let cursor = null;
+  do {
+    const body = { page_size: 100 };
+    if (cursor) body.start_cursor = cursor;
+    const r = await fetch(`https://api.notion.com/v1/databases/${NOTION_PIPELINE_DB}/query`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${key}`, "Notion-Version": "2022-06-28", "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error("Notion query falló: " + (j.message || r.status));
+    for (const p of (j.results || [])) {
+      const pr = p.properties || {};
+      leads.push({
+        nombre: ((pr["Lead"] || {}).title || []).map((t) => t.plain_text).join("") || "(sin nombre)",
+        estado: (((pr["Estado"] || {}).select) || {}).name || "",
+        tel: norm10(((pr["Teléfono / WhatsApp"] || {}).phone_number)),
+        email: normEmail(((pr["Email"] || {}).email)),
+      });
+    }
+    cursor = j.has_more ? j.next_cursor : null;
+  } while (cursor);
+  return leads;
+}
+
+async function runConciliador() {
+  const [snap, leads] = await Promise.all([db.collection("ventas").get(), leerLeadsPipeline()]);
+  const hallazgos = [];
+  let ventasPagadas = 0;
+  snap.forEach((d) => {
+    const v = d.data();
+    if (v.paymentStatus !== "paid") return;
+    ventasPagadas++;
+    const emails = [v.email, v.userEmail, v.applicant && v.applicant.email].map(normEmail).filter(Boolean);
+    const tels = [v.telefono, v.phone, v.whatsapp, v.applicant && v.applicant.phone].map(norm10).filter(Boolean);
+    const match = leads.filter((l) => (l.email && emails.includes(l.email)) || (l.tel && tels.includes(l.tel)));
+    const activos = match.filter((l) => !ESTADOS_NO_ACTIVOS.includes(l.estado));
+    if (match.length === 0) {
+      hallazgos.push(`⚠️ ${v.companyName || d.id} (RD$${v.totalAmount || "?"}): venta PAGADA sin ningún lead que coincida en el Pipeline (posible webhook perdido o contactos distintos). Contactos de la venta: ${[...emails, ...tels].join(", ") || "—"}.`);
+    } else if (activos.length > 0) {
+      hallazgos.push(`🚨 ${v.companyName || d.id}: CLIENTE PAGADO con lead(s) todavía ACTIVO(S) en el Pipeline: ${activos.map((l) => `«${l.nombre}» [${l.estado}]`).join(", ")} — cerrar/unificar (identidad duplicada o desfase).`);
+    }
+  });
+  return { hallazgos, ventasPagadas, totalLeads: leads.length };
+}
+
+async function enviarReporteConciliador(res) {
+  const cuerpo = res.hallazgos.length
+    ? `El conciliador diario encontró ${res.hallazgos.length} desfase(s) entre Firestore (ventas) y Notion (Pipeline):\n\n` +
+      res.hallazgos.map((h, i) => `${i + 1}. ${h}`).join("\n\n") +
+      `\n\n(Revisadas ${res.ventasPagadas} ventas pagadas contra ${res.totalLeads} leads.)`
+    : "";
+  if (!cuerpo) return false;
+  await transporter.sendMail({
+    from: "Formalizate Conciliador <smartbizservicesrd@gmail.com>",
+    to: "smartbizservicesrd@gmail.com",
+    subject: `🧭 Conciliador: ${res.hallazgos.length} desfase(s) Firestore↔Notion`,
+    text: cuerpo,
+  });
+  return true;
+}
+
+// Corre solo, cada día 7:00 AM (antes del reporte diario de las 8).
+// Silencio = todo cuadra. Si falla, intenta avisar por email igual.
+exports.conciliadorPipeline = onSchedule(
+  { schedule: "0 7 * * *", timeZone: "America/Santo_Domingo", timeoutSeconds: 300, memory: "512MiB" },
+  async () => {
+    try {
+      const res = await runConciliador();
+      const enviado = await enviarReporteConciliador(res);
+      console.log(`Conciliador: ${res.hallazgos.length} hallazgos (${res.ventasPagadas} ventas / ${res.totalLeads} leads)${enviado ? " — email enviado" : ""}`);
+    } catch (err) {
+      console.error("Conciliador falló:", err);
+      try {
+        await transporter.sendMail({
+          from: "Formalizate Conciliador <smartbizservicesrd@gmail.com>",
+          to: "smartbizservicesrd@gmail.com",
+          subject: "🧭⚠️ El Conciliador diario FALLÓ",
+          text: "Error: " + err.message,
+        });
+      } catch (e2) { console.error("Y el aviso de fallo también:", e2.message); }
+    }
+  }
+);
+
+// Disparo manual (x-admin-token). POST {enviarEmail?:true} → mismos chequeos al instante.
+exports.conciliadorRun = onRequest(
+  { region: "us-central1", cors: true, timeoutSeconds: 300, memory: "512MiB" },
+  async (req, res) => {
+    if (req.method !== "POST") return res.status(405).json({ error: "Método no permitido" });
+    try {
+      verifyAdminWrite(req);
+    } catch (err) {
+      return res.status(401).json({ error: err.message });
+    }
+    try {
+      const r = await runConciliador();
+      let emailEnviado = false;
+      if ((req.body || {}).enviarEmail) emailEnviado = await enviarReporteConciliador(r);
+      return res.json({ ok: true, ...r, emailEnviado });
+    } catch (err) {
+      console.error("conciliadorRun falló:", err);
+      return res.status(500).json({ error: err.message });
     }
   }
 );
