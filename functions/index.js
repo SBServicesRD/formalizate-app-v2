@@ -7,6 +7,7 @@ const { getAuth } = require("firebase-admin/auth");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage");
 const nodemailer = require("nodemailer");
+const { getTemplate } = require("./emailTemplates");
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
@@ -20,7 +21,7 @@ setGlobalOptions({
   region: "us-central1",
   // Secretos desde Secret Manager (ya NO viven en functions/.env):
   // ZOHO_PASSWORD es la app password de GMAIL (nombre histórico engañoso).
-  secrets: ["ZOHO_PASSWORD", "CUSTOMER_MAGIC_SECRET", "INVESTOR_MAGIC_SECRET", "ADMIN_MAGIC_SECRET", "NOTION_API_KEY"],
+  secrets: ["ZOHO_PASSWORD", "CUSTOMER_MAGIC_SECRET", "INVESTOR_MAGIC_SECRET", "ADMIN_MAGIC_SECRET", "NOTION_API_KEY", "VENTAS_SMTP_PASSWORD", "WHATSAPP_TOKEN", "GEMINI_API_KEY"],
 });
 
 const app = initializeApp();
@@ -49,14 +50,101 @@ async function buildDownloadUrl(objectPath) {
 const CUSTOMER_DASHBOARD_URL = process.env.CUSTOMER_DASHBOARD_URL || "https://dash.formalizate.app";
 const INVESTOR_DASHBOARD_URL = process.env.INVESTOR_DASHBOARD_URL || "https://investors.formalizate.app";
 
+// ── WhatsApp (Meta Cloud API) ────────────────────────────────────────────────
+// Enviamos plantillas aprobadas por la WhatsApp Cloud API de Meta (el mismo canal
+// que ya usa el Reporte Diario). Fuera de la ventana de 24h Meta EXIGE plantilla
+// aprobada — justo el caso de un cliente que dejó de responder. El token de
+// sistema vive en Secret Manager (WHATSAPP_TOKEN); phone_number_id y nombre de
+// plantilla son config no sensible (defaults abajo). Sin token → se omite (el
+// correo sí sale igual).
+const WHATSAPP_PHONE_ID      = process.env.WHATSAPP_PHONE_NUMBER_ID || "315400284998744";
+const WHATSAPP_TEMPLATE      = process.env.WHATSAPP_TEMPLATE_RECORDATORIO || "recordatorio_expediente";
+const WHATSAPP_TEMPLATE_LANG = process.env.WHATSAPP_TEMPLATE_LANG || "es_DO";
+
+/** Normaliza un teléfono RD a E.164 sin '+': 10 dígitos → antepone '1'. */
+function normalizePhoneRD(raw) {
+  const digits = String(raw || "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.length === 10) return "1" + digits;
+  if (digits.length === 11 && digits.startsWith("1")) return digits;
+  return digits;
+}
+
+/**
+ * Envía la plantilla de recordatorio por WhatsApp (Meta Cloud API). Best-effort:
+ * nunca lanza (un fallo de WhatsApp no debe tumbar el correo ni el trigger).
+ * Variables de plantilla: {{1}}=nombre, {{2}}=empresa. El enlace/detalle viaja
+ * por correo; el WhatsApp es el "toque" que logra que lo revisen.
+ */
+async function sendWhatsApp({ phone, nombre, empresa } = {}) {
+  const token = process.env.WHATSAPP_TOKEN;
+  if (!token) {
+    console.log("sendWhatsApp: WHATSAPP_TOKEN sin configurar — WhatsApp omitido");
+    return false;
+  }
+  const to = normalizePhoneRD(phone);
+  if (!to) {
+    console.log("sendWhatsApp: sin teléfono válido — WhatsApp omitido");
+    return false;
+  }
+  const body = {
+    messaging_product: "whatsapp",
+    to,
+    type: "template",
+    template: {
+      name: WHATSAPP_TEMPLATE,
+      language: { code: WHATSAPP_TEMPLATE_LANG },
+      components: [{
+        type: "body",
+        parameters: [
+          { type: "text", text: String(nombre || "Cliente") },
+          { type: "text", text: String(empresa || "tu empresa") },
+        ],
+      }],
+    },
+  };
+  try {
+    const resp = await fetch(`https://graph.facebook.com/v19.0/${WHATSAPP_PHONE_ID}/messages`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!resp.ok) {
+      const txt = await resp.text().catch(() => "");
+      console.error("sendWhatsApp: Meta respondió", resp.status, txt.slice(0, 300));
+      return false;
+    }
+    console.log("WhatsApp enviado a:", to);
+    return true;
+  } catch (err) {
+    console.error("sendWhatsApp falló:", err.message);
+    return false;
+  }
+}
+
+/** URL del dashboard del cliente con un token fresco (el botón siempre funciona). */
+function customerDashboardUrl(firestoreId) {
+  const customerSecret = process.env.CUSTOMER_MAGIC_SECRET;
+  if (!customerSecret || !firestoreId) return CUSTOMER_DASHBOARD_URL;
+  const dashboardToken = signToken(
+    { saleId: firestoreId, role: "customer", issuedAt: Math.floor(Date.now() / 1000) },
+    customerSecret
+  );
+  return `${CUSTOMER_DASHBOARD_URL}/?token=${dashboardToken}`;
+}
+
 // ============================================================
 // EMAIL
 // ============================================================
+// Envío autenticado como ventas@formalizate.app (Workspace, SPF+DKIM alineados).
+// La app password de ventas@ vive en Secret Manager (VENTAS_SMTP_PASSWORD).
 const transporter = nodemailer.createTransport({
-  service: "gmail",
+  host: "smtp.gmail.com",
+  port: 465,
+  secure: true,
   auth: {
-    user: "smartbizservicesrd@gmail.com",
-    pass: process.env.ZOHO_PASSWORD,
+    user: "ventas@formalizate.app",
+    pass: process.env.VENTAS_SMTP_PASSWORD,
   },
 });
 
@@ -64,7 +152,7 @@ async function sendEmail(mailOptions) {
   try {
     const info = await transporter.sendMail({
       ...mailOptions,
-      from: '"Formalízate.app" <smartbizservicesrd@gmail.com>',
+      from: '"Equipo de Formalízate.app" <ventas@formalizate.app>',
       replyTo: "ventas@formalizate.app",
       bcc: "jmestrella@formalizate.app",
     });
@@ -190,75 +278,8 @@ function hashPin(pin) {
 // ============================================================
 // TEMPLATES DE EMAIL
 // ============================================================
-function getTemplate(type, data) {
-  const { nombre, plan, monto, orderId, dashboardUrl, dashboardPin, hitoLabel } = data;
-  const styles = {
-    container: "font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;",
-    header: "background-color: #1D3557; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0;",
-    btn: "background-color: #E63A47; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block; margin-top: 20px;",
-    btnBlue: "background-color: #1D3557; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;",
-    pin: "letter-spacing: 8px; font-size: 28px; font-weight: bold; color: #1D3557; background: #f0f4ff; border: 2px dashed #1D3557; padding: 12px 24px; border-radius: 8px; display: inline-block;",
-  };
-
-  const commonBody = `
-    <div style="padding: 20px; border: 1px solid #ddd; border-top: none;">
-      <p>Hola <strong>${nombre}</strong>,</p>
-      <div style="background: #f4f4f4; padding: 10px; text-align: center; margin: 15px 0; font-weight: bold; color: #1D3557;">
-        Orden: ${orderId}
-      </div>
-      <table style="width:100%; margin-bottom: 20px;">
-        <tr><td>Servicio:</td><td style="text-align:right"><strong>${plan}</strong></td></tr>
-        <tr><td>Monto:</td><td style="text-align:right"><strong>RD$ ${monto}</strong></td></tr>
-      </table>
-  `;
-
-  const dashboardSection = dashboardUrl && dashboardPin ? `
-    <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
-    <p style="font-weight: bold; color: #1D3557;">📊 Tu Panel de Seguimiento</p>
-    <p style="font-size: 13px; color: #555;">Accede en tiempo real al estado de tu expediente con el enlace y PIN que te asignamos:</p>
-    <div style="text-align: center; margin: 16px 0;">
-      <a href="${dashboardUrl}" style="${styles.btnBlue}">Ver mi Expediente</a>
-    </div>
-    <p style="text-align: center; font-size: 12px; color: #888; margin-bottom: 4px;">Tu PIN de acceso (guárdalo, es único):</p>
-    <div style="text-align: center; margin-bottom: 16px;">
-      <span style="${styles.pin}">${dashboardPin}</span>
-    </div>
-    <p style="font-size: 11px; color: #aaa; text-align: center;">Si alguien más te pidió este PIN, no lo compartas. Es personal e intransferible.</p>
-  ` : "";
-
-  const templates = {
-    orden_recibida: {
-      subject: "Orden Recibida - Validando Comprobante",
-      html: `<div style="${styles.container}"><div style="${styles.header}"><h2>🔍 Validando tu Orden</h2></div>${commonBody}<div style="background-color: #fff3cd; padding: 15px; border-radius: 5px; color: #856404;">Hemos recibido tu comprobante. Nuestro equipo lo está verificando manualmente.</div>${dashboardSection}</div></div>`,
-    },
-    pago_exitoso: {
-      subject: "✅ Pago Confirmado - Iniciamos labores",
-      html: `<div style="${styles.container}"><div style="${styles.header}"><h2>¡Pago Confirmado!</h2></div>${commonBody}<p>Tu pago ha sido procesado exitosamente. Ya hemos iniciado tu expediente legal.</p>${dashboardSection}</div></div>`,
-    },
-    documentos_listos: {
-      subject: "📄 Tus documentos constitutivos están listos para revisar",
-      html: `<div style="${styles.container}"><div style="${styles.header}"><h2>Tus documentos están listos</h2></div>${commonBody}<p>Hemos preparado tus <strong>documentos constitutivos</strong> (estatutos / acta constitutiva). Revísalos en tu panel y, si todo está correcto, <strong>apruébalos con un clic</strong> para que sigamos avanzando. Si tienes cualquier duda o necesitas un cambio, puedes decírnoslo desde el mismo panel.</p><div style="background-color:#fff8e1;padding:12px 15px;border-radius:6px;color:#8a6d3b;font-size:13px;margin:16px 0;">ℹ️ El nombre comercial en los documentos es <strong>provisional</strong> mientras ONAPI lo aprueba. Si el nombre llegara a ser objetado, lo sustituiremos y te avisaremos antes de continuar.</div><center><a href="${dashboardUrl || "#"}" style="${styles.btn}">Revisar y Aprobar</a></center>${dashboardSection}</div></div>`,
-    },
-    transferencia_validada: {
-      subject: "✅ Transferencia Validada",
-      html: `<div style="${styles.container}"><div style="${styles.header}"><h2>Pago Aprobado</h2></div>${commonBody}<p>Hemos confirmado tu transferencia bancaria.</p><center><a href="${dashboardUrl || "#"}" style="${styles.btn}">Ver Estatus</a></center></div></div>`,
-    },
-    onapi_listo: {
-      subject: "🚀 Nombre Comercial Aprobado (ONAPI)",
-      html: `<div style="${styles.container}"><div style="${styles.header}"><h2>¡Nombre Aprobado!</h2></div><div style="padding: 20px; border: 1px solid #ddd;"><p>Buenas noticias, <strong>${nombre}</strong>.</p><p>ONAPI ha concedido oficialmente el nombre de tu empresa.</p><center><a href="${dashboardUrl || "#"}" style="${styles.btn}">Ver Documento</a></center></div></div>`,
-    },
-    completado: {
-      subject: "🎉 ¡Tu Empresa está Lista!",
-      html: `<div style="${styles.container}"><div style="${styles.header}"><h2>¡Misión Cumplida!</h2></div><div style="padding: 20px; border: 1px solid #ddd;"><p>Felicidades, <strong>${nombre}</strong>.</p><p>El proceso ha finalizado. Descarga tu RNC y Registro Mercantil.</p><center><a href="${dashboardUrl || "#"}" style="${styles.btn}">Descargar Todo</a></center></div></div>`,
-    },
-    hito_listo: {
-      subject: `✅ Actualización: ${hitoLabel || "Nuevo hito completado"}`,
-      html: `<div style="${styles.container}"><div style="${styles.header}"><h2>✅ Actualización de Expediente</h2></div>${commonBody}<div style="background-color: #e8f5e9; padding: 15px; border-radius: 5px; color: #2e7d32; margin-bottom: 16px;"><strong>${hitoLabel || "Hito completado"}</strong></div><p style="color:#555;">Continuamos avanzando con tu expediente. Te notificaremos en cada etapa.</p><center><a href="${dashboardUrl || "#"}" style="${styles.btnBlue}">Ver Estado de mi Expediente</a></center>${dashboardSection}</div></div>`,
-    },
-  };
-
-  return templates[type];
-}
+// getTemplate vive ahora en ./emailTemplates.js (sistema coherente: shell común +
+// bloque RECIBO solo en transaccionales). Se importa arriba con require.
 
 // ============================================================
 // FIRESTORE TRIGGER: NUEVA VENTA
@@ -617,7 +638,7 @@ async function enviarReporteConciliador(res) {
     : "";
   if (!cuerpo) return false;
   await transporter.sendMail({
-    from: "Formalizate Conciliador <smartbizservicesrd@gmail.com>",
+    from: "Formalízate.app · Conciliador <ventas@formalizate.app>",
     to: "smartbizservicesrd@gmail.com",
     subject: `🧭 Conciliador: ${res.hallazgos.length} desfase(s) Firestore↔Notion`,
     text: cuerpo,
@@ -638,12 +659,110 @@ exports.conciliadorPipeline = onSchedule(
       console.error("Conciliador falló:", err);
       try {
         await transporter.sendMail({
-          from: "Formalizate Conciliador <smartbizservicesrd@gmail.com>",
+          from: "Formalízate.app · Conciliador <ventas@formalizate.app>",
           to: "smartbizservicesrd@gmail.com",
           subject: "🧭⚠️ El Conciliador diario FALLÓ",
           text: "Error: " + err.message,
         });
       } catch (e2) { console.error("Y el aviso de fallo también:", e2.message); }
+    }
+  }
+);
+
+// ============================================================
+// CONTROL DE VENTAS SEMANAL — actualiza la tabla de Notion con datos reales
+// (Firestore = ventas/ingreso · Pipeline = leads creados en la semana).
+// Cada lunes finaliza la semana pasada y refresca la actual. Cero mantenimiento.
+// ============================================================
+const CONTROL_SEMANAL_DB = "1f32e056eeb1436782155a28c2a486d8";
+const PIPELINE_DB_ID = "fc24dcdbd9d34eaf8525fb15950c73f1";
+
+function semanaISO(d) {
+  const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const day = (t.getUTCDay() + 6) % 7;
+  t.setUTCDate(t.getUTCDate() - day + 3);
+  const firstThu = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
+  const week = 1 + Math.round(((t - firstThu) / 86400000 - 3 + ((firstThu.getUTCDay() + 6) % 7)) / 7);
+  const mon = new Date(t); mon.setUTCDate(t.getUTCDate() - 3);
+  const end = new Date(mon); end.setUTCDate(mon.getUTCDate() + 7);
+  return { etiqueta: t.getUTCFullYear() + "-W" + String(week).padStart(2, "0"), monday: mon.toISOString().slice(0, 10), start: mon, end };
+}
+
+async function notionApi(path, method, body) {
+  const r = await fetch("https://api.notion.com/v1/" + path, {
+    method,
+    headers: { "Authorization": "Bearer " + process.env.NOTION_API_KEY, "Notion-Version": "2022-06-28", "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return { ok: r.ok, status: r.status, json: await r.json().catch(() => ({})) };
+}
+
+async function actualizarSemanaControl(w) {
+  // Ventas + ingreso desde Firestore (pagadas, por fecha)
+  const snap = await db.collection("ventas").where("fecha", ">=", w.start).where("fecha", "<", w.end).get();
+  let ventas = 0, ingreso = 0;
+  snap.forEach((d) => { const v = d.data(); if (v.paymentStatus === "paid") { ventas++; ingreso += Number(v.totalAmount || 0); } });
+  // Leads = páginas del Pipeline creadas en la semana
+  let leads = 0, cursor = undefined;
+  do {
+    const q = await notionApi("databases/" + PIPELINE_DB_ID + "/query", "POST", {
+      filter: { and: [
+        { timestamp: "created_time", created_time: { on_or_after: w.start.toISOString() } },
+        { timestamp: "created_time", created_time: { before: w.end.toISOString() } },
+      ] }, page_size: 100, ...(cursor ? { start_cursor: cursor } : {}),
+    });
+    leads += (q.json.results || []).length;
+    cursor = q.json.has_more ? q.json.next_cursor : null;
+  } while (cursor);
+  // Buscar la fila de la semana (por Fecha inicio) y actualizar
+  const find = await notionApi("databases/" + CONTROL_SEMANAL_DB + "/query", "POST", {
+    filter: { property: "Fecha inicio de semana", date: { equals: w.monday } }, page_size: 1,
+  });
+  const row = (find.json.results || [])[0];
+  if (!row) return { semana: w.etiqueta, error: "fila no encontrada" };
+  await notionApi("pages/" + row.id, "PATCH", {
+    properties: {
+      "Leads inbound": { number: leads },
+      "Ventas totales": { number: ventas },
+      "Ventas inbound": { number: ventas },
+      "Ingreso total (RD$)": { number: ingreso },
+    },
+  });
+  return { semana: w.etiqueta, leads, ventas, ingreso };
+}
+
+async function correrControlSemanal() {
+  const hoy = new Date();
+  const semanaPasada = new Date(hoy); semanaPasada.setUTCDate(hoy.getUTCDate() - 7);
+  const res = [];
+  res.push(await actualizarSemanaControl(semanaISO(semanaPasada))); // finaliza la que terminó
+  res.push(await actualizarSemanaControl(semanaISO(hoy)));           // refresca la actual
+  return res;
+}
+
+// Lunes 8:15am AST (después del reporte diario).
+exports.controlSemanalAuto = onSchedule(
+  { schedule: "15 8 * * 1", timeZone: "America/Santo_Domingo", timeoutSeconds: 300, memory: "512MiB" },
+  async () => {
+    try {
+      const res = await correrControlSemanal();
+      console.log("Control semanal actualizado:", JSON.stringify(res));
+    } catch (err) { console.error("controlSemanalAuto falló:", err); }
+  }
+);
+
+// Disparo manual (x-admin-token) para probar/rellenar al instante.
+exports.controlSemanalRun = onRequest(
+  { region: "us-central1", cors: true, timeoutSeconds: 300, memory: "512MiB" },
+  async (req, res) => {
+    if (req.method !== "POST") return res.status(405).json({ error: "Método no permitido" });
+    try { verifyAdminWrite(req); } catch (err) { return res.status(401).json({ error: err.message }); }
+    try {
+      const r = await correrControlSemanal();
+      return res.json({ ok: true, semanas: r });
+    } catch (err) {
+      console.error("controlSemanalRun falló:", err);
+      return res.status(500).json({ error: err.message });
     }
   }
 );
@@ -665,6 +784,277 @@ exports.conciliadorRun = onRequest(
       return res.json({ ok: true, ...r, emailEnviado });
     } catch (err) {
       console.error("conciliadorRun falló:", err);
+      return res.status(500).json({ error: err.message });
+    }
+  }
+);
+
+// ============================================================
+// MOTOR DE RECORDATORIOS — clientes atascados esperando SU acción
+// ============================================================
+// Persigue a los clientes cuyo expediente está EN PAUSA esperando algo de ellos
+// (aprobar documentos, responder una objeción de ONAPI). Reenvía por correo +
+// WhatsApp y, pasados unos días sin respuesta, te escala a ti para llamar. Sin
+// esto, un cliente que no revisa el correo deja el expediente clavado por semanas.
+const WAITING_STATES = {
+  documentos_en_revision: {
+    tipo: "recordatorio_documentos",
+    template: "documentos_listos",
+    resumen: "Documentos constitutivos sin aprobar",
+    // Si el cliente ya actuó (aprobó / pidió cambios), no molestar.
+    yaRespondio: (v) => ["approved", "changes_requested"].includes(v.docsApprovalStatus),
+  },
+  onapi_objetada: {
+    tipo: "recordatorio_objecion",
+    template: "onapi_objetada",
+    resumen: "Objeción de ONAPI sin resolver",
+    yaRespondio: () => false,
+  },
+};
+
+const NUDGE_INTERVAL_HOURS = 48;   // no repetir un recordatorio antes de 48h
+const ESCALATE_AFTER_HOURS = 96;   // a los ~4 días, avisar a SBS para llamar
+const MAX_NUDGES = 3;              // tope anti-spam por cliente
+
+function hoursSince(ts) {
+  if (!ts) return Infinity;
+  const d = typeof ts.toDate === "function" ? ts.toDate() : new Date(ts);
+  const ms = Date.now() - d.getTime();
+  return Number.isFinite(ms) ? ms / 36e5 : Infinity;
+}
+
+async function runRecordatorios({ dryRun = false, soloSaleId = null } = {}) {
+  const snap = await db.collection("ventas").get();
+  const nowIso = new Date().toISOString();
+  const acciones = [];   // qué se hizo (o haría) por cliente — útil en dryRun
+  const escalar = [];    // clientes que hay que llamar a mano
+  let notificados = 0;
+
+  for (const doc of snap.docs) {
+    if (soloSaleId && doc.id !== soloSaleId) continue;
+    const v = doc.data();
+    const status = (v.status || "").toLowerCase().trim();
+    const cfg = WAITING_STATES[status];
+    if (!cfg) continue;                       // no está esperando al cliente
+    const empresa = v.companyName || v.nombre || doc.id;
+    if (v.nudgePaused === true) { acciones.push({ id: doc.id, empresa, skip: "pausado manualmente" }); continue; }
+    if (cfg.yaRespondio(v))    { acciones.push({ id: doc.id, empresa, skip: "el cliente ya respondió" }); continue; }
+
+    // Estado del recordatorio; se re-inicializa si el doc cambió de estado
+    // (así no hace falta limpiar nada desde onVentaUpdate).
+    let ns = v.nudgeState;
+    if (!ns || ns.status !== status) ns = { status, since: nowIso, count: 0, lastAt: null };
+
+    const horasEsperando  = hoursSince(ns.since);
+    const horasDesdeUltimo = hoursSince(ns.lastAt);
+    const debeEscalar = horasEsperando >= ESCALATE_AFTER_HOURS;
+
+    if (debeEscalar) {
+      const tels = [v.telefono, v.phone, v.whatsapp, v.applicant && v.applicant.phone].filter(Boolean);
+      escalar.push({
+        empresa, motivo: cfg.resumen,
+        dias: Math.floor(horasEsperando / 24),
+        tel: tels[0] || "—",
+        email: v.email || v.userEmail || (v.applicant && v.applicant.email) || "—",
+        recordatorios: ns.count,
+      });
+    }
+
+    const puedeNotificar = ns.count < MAX_NUDGES && horasDesdeUltimo >= NUDGE_INTERVAL_HOURS;
+    if (!puedeNotificar) {
+      acciones.push({
+        id: doc.id, empresa, escalado: debeEscalar,
+        skip: ns.count >= MAX_NUDGES
+          ? `tope de ${MAX_NUDGES} recordatorios alcanzado`
+          : `dentro del intervalo (últ. hace ${Math.floor(horasDesdeUltimo)}h)`,
+      });
+      continue;
+    }
+
+    const email = v.email || v.userEmail || (v.applicant && v.applicant.email) || "";
+    const phone = v.telefono || v.phone || v.whatsapp || (v.applicant && v.applicant.phone) || "";
+    let nombre = "Cliente";
+    if (v.applicant && v.applicant.names) nombre = `${v.applicant.names} ${v.applicant.surnames || ""}`.trim();
+    else if (v.nombre) nombre = v.nombre;
+    const plan = v.plan || v.packageName || "";
+    const monto = getPrecio(plan, v.monto || v.totalAmount);
+    const orderId = v.orderId || doc.id;
+    const dashboardUrl = customerDashboardUrl(v.firestoreId || doc.id);
+
+    acciones.push({ id: doc.id, empresa, notificaria: cfg.tipo, intento: ns.count + 1, email: email || "—", phone: phone || "—", escalado: debeEscalar });
+
+    if (!dryRun) {
+      if (email) {
+        const tpl = getTemplate(cfg.template, { nombre, plan, monto, orderId, dashboardUrl, motivo: v.onapiObjecionMotivo });
+        if (tpl) await sendEmail({ to: email, subject: `⏰ Recordatorio · ${tpl.subject}`, html: tpl.html });
+      }
+      await sendWhatsApp({ phone, nombre, empresa, tipo: cfg.tipo, motivo: v.onapiObjecionMotivo || "", dashboardUrl });
+      await doc.ref.update({ nudgeState: { status, since: ns.since, count: ns.count + 1, lastAt: nowIso } });
+      notificados++;
+    }
+  }
+
+  let escalado = false;
+  if (escalar.length && !dryRun) escalado = await enviarDigestRecordatorios(escalar);
+  return { notificados, escalar, acciones, escalado, dryRun };
+}
+
+async function enviarDigestRecordatorios(escalar) {
+  const filas = escalar.map((e, i) =>
+    `${i + 1}. ${e.empresa} — ${e.motivo} · ${e.dias} día(s) esperando · ${e.recordatorios} recordatorio(s) enviados\n   Tel: ${e.tel} · Correo: ${e.email}`
+  ).join("\n\n");
+  try {
+    await sendEmail({
+      to: "ventas@formalizate.app",
+      subject: `📞 ${escalar.length} cliente(s) atascado(s) — hay que llamarlos`,
+      html: `<p>Estos expedientes llevan días en pausa esperando al cliente y ya recibieron recordatorios automáticos sin respuesta. <strong>Toca contacto humano (llamada o WhatsApp directo):</strong></p><pre style="font-family:Arial,sans-serif;font-size:13px;color:#333;white-space:pre-wrap;">${filas}</pre>`,
+    });
+    return true;
+  } catch (err) {
+    console.error("enviarDigestRecordatorios falló:", err.message);
+    return false;
+  }
+}
+
+// Corre cada día 8:30 AM (después del conciliador de las 7). Reenvía y escala.
+exports.recordatoriosClientesBloqueados = onSchedule(
+  { schedule: "30 8 * * *", timeZone: "America/Santo_Domingo", timeoutSeconds: 300, memory: "512MiB" },
+  async () => {
+    // Interruptor de seguridad: el cron NO envía nada hasta poner RECORDATORIOS_ENABLED='true'
+    // en functions/.env + redeploy. Así se verifica el alcance (dryRun) antes de tocar clientes.
+    if (process.env.RECORDATORIOS_ENABLED !== "true") {
+      console.log("Recordatorios: cron DESACTIVADO (RECORDATORIOS_ENABLED != 'true')");
+      return;
+    }
+    try {
+      const r = await runRecordatorios({ dryRun: false });
+      console.log(`Recordatorios: ${r.notificados} notificado(s), ${r.escalar.length} a escalar${r.escalado ? " (digest enviado)" : ""}`);
+    } catch (err) {
+      console.error("Recordatorios falló:", err);
+    }
+  }
+);
+
+// Disparo manual (x-admin-token). POST { dryRun?:true, saleId?:"..." }.
+// dryRun=true (por defecto) → dice a QUIÉN notificaría SIN enviar nada. Úsalo primero.
+exports.recordatoriosRun = onRequest(
+  { region: "us-central1", cors: true, timeoutSeconds: 300, memory: "512MiB" },
+  async (req, res) => {
+    if (req.method !== "POST") return res.status(405).json({ error: "Método no permitido" });
+    try { verifyAdminWrite(req); } catch (err) { return res.status(401).json({ error: err.message }); }
+    try {
+      const { dryRun = true, saleId = null } = req.body || {};
+      const r = await runRecordatorios({ dryRun: !!dryRun, soloSaleId: saleId });
+      return res.json({ ok: true, ...r });
+    } catch (err) {
+      console.error("recordatoriosRun falló:", err);
+      return res.status(500).json({ error: err.message });
+    }
+  }
+);
+
+// ============================================================
+// IA: INTERPRETAR OBJECIÓN DE ONAPI PARA EL CLIENTE
+// ============================================================
+// Lee el oficio de objeción de ONAPI (PDF/imagen) con Gemini visión y redacta,
+// en lenguaje simple, qué pasó y qué necesitamos del cliente. NO envía nada ni
+// cambia estado: devuelve un BORRADOR para que el humano lo revise y apruebe.
+// OJO: la guía legal es de apoyo; el mensaje final SIEMPRE lo aprueba un humano.
+const ONAPI_GROUNDING = `
+Eres un asistente de Formalízate.app (República Dominicana) que traduce objeciones de ONAPI sobre el NOMBRE COMERCIAL a lenguaje simple y cálido para un cliente sin formación legal.
+
+MARCO LEGAL (Ley 20-00 de Propiedad Industrial de RD y su Reglamento, mod. por Decreto 260-18):
+- Art. 113: el derecho sobre el nombre comercial nace con su primer uso; se protege aunque no se registre.
+- Art. 114 (base de casi toda objeción): un nombre comercial NO puede (a) ser contrario a la moral o el orden público, ni (b) ser susceptible de crear confusión en el comercio o el público sobre la identidad, naturaleza o actividades de la empresa — incluye parecerse a un nombre o marca ya existente.
+- Arts. 116-117: el registro es declarativo, da presunción de buena fe y dura 10 años renovables.
+
+MOTIVOS TÍPICOS DE OBJECIÓN Y SU REMEDIO (guía práctica):
+1. Confusión con un nombre/marca ya registrado (idéntico o muy parecido) -> remedio: proponer un nombre distinto (agregar o cambiar términos que lo diferencien).
+2. Nombre genérico o meramente descriptivo (solo describe la actividad) -> remedio: añadir un elemento distintivo (de fantasía, un nombre propio, etc.).
+3. Contrario a la moral o el orden público -> remedio: cambiar el término problemático.
+4. Términos reservados o engañosos (p.ej. "banco", "seguros", "universidad", o que hagan creer algo que la empresa no es) -> remedio: quitar el término o presentar la autorización del ente que corresponda.
+5. Faltas o errores formales en la solicitud -> remedio: corregir o completar el requisito.
+
+REGLAS:
+- Escribe en español dominicano, simple y humano, como a alguien sin conocimientos legales. Nada de jerga.
+- NO inventes artículos ni cites números que no estén en el documento o en esta guía.
+- Si el documento es ilegible, ambiguo, o el motivo no encaja con la guía, marca requiereRevisionAbogado=true y no afirmes con certeza.
+- Los nombres alternos sugeridos deben evitar el motivo de la objeción.
+`;
+
+/** Llama a Gemini (visión) con un prompt + un documento en base64. Devuelve el texto. */
+async function llamarGemini(promptText, base64, mimeType) {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) throw new Error("GEMINI_API_KEY no configurada");
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
+  const parts = [{ text: promptText }];
+  if (base64) parts.push({ inline_data: { mime_type: mimeType || "application/pdf", data: base64 } });
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ parts }],
+      generationConfig: { temperature: 0.2, responseMimeType: "application/json" },
+    }),
+  });
+  if (!resp.ok) {
+    const t = await resp.text().catch(() => "");
+    throw new Error("Gemini " + resp.status + ": " + t.slice(0, 200));
+  }
+  const data = await resp.json();
+  return (data?.candidates?.[0]?.content?.parts || []).map((p) => p.text || "").join("");
+}
+
+// POST (x-admin-token) { saleId, fileBase64, mimeType } → BORRADOR (no envía, no cambia estado)
+exports.analizarObjecionOnapi = onRequest(
+  { region: "us-central1", cors: true, timeoutSeconds: 120, memory: "512MiB" },
+  async (req, res) => {
+    if (req.method !== "POST") return res.status(405).json({ error: "Método no permitido" });
+    try { verifyAdminWrite(req); } catch (err) { return res.status(401).json({ error: err.message }); }
+    try {
+      const { saleId, fileBase64, mimeType } = req.body || {};
+      if (!saleId || !fileBase64) return res.status(400).json({ error: "saleId y fileBase64 requeridos" });
+
+      // Contexto: el nombre objetado (Opción A) y las alternativas que el cliente
+      // YA propuso al llenar su solicitud (Opción B/C). La idea NO es que la IA
+      // invente nombres, sino que el cliente reconfirme entre los suyos o proponga otro.
+      let empresa = "la empresa";
+      let alternativas = [];
+      try {
+        const snap = await db.collection("ventas").doc(saleId).get();
+        const v = snap.data() || {};
+        empresa = v.companyName || v.nombre || empresa;
+        alternativas = [v.altName1, v.altName2]
+          .map((x) => String(x || "").trim())
+          .filter((x) => x && !/^(n\/?a|na|-|—)$/i.test(x));
+      } catch (e) { /* contexto opcional */ }
+
+      const listaAlt = alternativas.length
+        ? `El cliente YA propuso estas alternativas al llenar su solicitud: ${alternativas.map((a) => `"${a}"`).join(", ")}.`
+        : "El cliente NO registró nombres alternativos en su solicitud.";
+
+      const prompt = `${ONAPI_GROUNDING}
+
+El nombre comercial objetado (Opción A) es: "${empresa}".
+${listaAlt}
+
+Analiza el documento de objeción de ONAPI adjunto y responde SOLO con un JSON con esta forma exacta:
+{
+  "mensajeCliente": "explicación en español simple y cálida (4-8 líneas): qué pasó con su nombre y por qué. AL FINAL, si el cliente tiene alternativas propias, pídele que CONFIRME con cuál de ellas seguimos o si prefiere proponer otra; NO inventes nombres nuevos. Si NO tiene alternativas, pídele que proponga 1-2 nombres.",
+  "motivoTecnico": "el motivo en términos precisos (1-2 líneas, uso interno de SBS)",
+  "nombresAlternosSugeridos": ["SOLO si el cliente no tiene alternativas propias; si ya las tiene, deja este arreglo vacío"],
+  "nivelConfianza": "alto|medio|bajo",
+  "requiereRevisionAbogado": true,
+  "notaInterna": "cualquier salvedad o duda para el equipo SBS"
+}`;
+
+      const raw = await llamarGemini(prompt, fileBase64, mimeType);
+      let draft;
+      try { draft = JSON.parse(raw); }
+      catch (e) { return res.status(502).json({ error: "La IA no devolvió JSON válido", raw: String(raw).slice(0, 500) }); }
+      return res.json({ ok: true, draft });
+    } catch (err) {
+      console.error("analizarObjecionOnapi falló:", err);
       return res.status(500).json({ error: err.message });
     }
   }
@@ -763,6 +1153,11 @@ exports.onVentaUpdate = onDocumentUpdated(
     } else if (statusNew === "onapi_listo") {
       templateType = "onapi_listo";
 
+    // 5b. ONAPI OBJETÓ el nombre → expediente en pausa esperando al cliente.
+    //     Solo en la transición real hacia ese estado (no en re-escrituras).
+    } else if (statusChanged && statusNew === "onapi_objetada") {
+      templateType = "onapi_objetada";
+
     // 6. Proceso completado
     } else if (statusNew === "completado") {
       templateType = "completado";
@@ -801,10 +1196,24 @@ exports.onVentaUpdate = onDocumentUpdated(
     }
 
     if (email) {
-      const template = getTemplate(templateType, { nombre, plan, monto, orderId, dashboardUrl, hitoLabel });
+      const template = getTemplate(templateType, { nombre, plan, monto, orderId, dashboardUrl, hitoLabel, motivo: after.onapiObjecionMotivo, mensajeCliente: after.onapiMensajeCliente });
       if (template) {
         await sendEmail({ to: email, subject: template.subject, html: template.html });
       }
+    }
+
+    // WhatsApp de refuerzo para la objeción de ONAPI: es urgente y el correo
+    // solo no alcanza (justo el caso que nos deja expedientes clavados).
+    if (templateType === "onapi_objetada") {
+      const phone = after.telefono || after.phone || after.whatsapp || after.applicant?.phone || "";
+      await sendWhatsApp({
+        phone,
+        nombre,
+        empresa: after.companyName || nombre,
+        tipo: "objecion_onapi",
+        motivo: after.onapiObjecionMotivo || "",
+        dashboardUrl,
+      });
     }
   }
 );
@@ -1394,15 +1803,20 @@ exports.adminUpdateSale = onRequest(
       return res.status(401).json({ error: err.message });
     }
 
-    const { saleId, status, paymentStatus } = req.body || {};
+    const { saleId, status, paymentStatus, onapiObjecionMotivo, onapiNombreAlterno, onapiMensajeCliente, onapiObjecionDocUrl, nudgePaused } = req.body || {};
     if (!saleId) return res.status(400).json({ error: "saleId requerido" });
 
     const updates = { updatedAt: FieldValue.serverTimestamp() };
     if (status !== undefined) updates.status = status;
     if (paymentStatus !== undefined) updates.paymentStatus = paymentStatus;
+    if (onapiObjecionMotivo !== undefined) updates.onapiObjecionMotivo = onapiObjecionMotivo;
+    if (onapiNombreAlterno !== undefined) updates.onapiNombreAlterno = onapiNombreAlterno;
+    if (onapiMensajeCliente !== undefined) updates.onapiMensajeCliente = onapiMensajeCliente;
+    if (onapiObjecionDocUrl !== undefined) updates.onapiObjecionDocUrl = onapiObjecionDocUrl;
+    if (nudgePaused !== undefined) updates.nudgePaused = nudgePaused;
 
     if (Object.keys(updates).length === 1) {
-      return res.status(400).json({ error: "Debe especificar status o paymentStatus" });
+      return res.status(400).json({ error: "Debe especificar al menos un campo a actualizar" });
     }
 
     try {
