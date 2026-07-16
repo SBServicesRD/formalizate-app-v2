@@ -10,7 +10,6 @@
    ===================================================================== */
 const path = require("path");
 const SRL_LIB = path.join(__dirname, "..", "srl", "mapear_db.js"); // (bundle CF)
-
 const { fechaPartes, enLetras, notariaPorRegion } = require(SRL_LIB);
 
 const miles = (n) => Number(n).toLocaleString("en-US");
@@ -18,7 +17,7 @@ const pesos2 = (n) => Number(n).toLocaleString("en-US", { minimumFractionDigits:
 const enLetrasMin = (n) => enLetras(n).toLowerCase();
 
 // ---------- gentilicio / estado civil / documento ----------
-const GENT = { "República Dominicana": ["dominicano", "dominicana"], "Dominicana": ["dominicano", "dominicana"], "Haití": ["haitiano", "haitiana"], "Estados Unidos": ["estadounidense", "estadounidense"], "Venezuela": ["venezolano", "venezolana"], "España": ["español", "española"], "Italia": ["italiano", "italiana"], "Francia": ["francés", "francesa"], "China": ["chino", "china"], "Colombia": ["colombiano", "colombiana"] };
+const GENT = { "República Dominicana": ["dominicano", "dominicana"], "Dominicana": ["dominicano", "dominicana"], "Haití": ["haitiano", "haitiana"], "Estados Unidos": ["estadounidense", "estadounidense"], "Venezuela": ["venezolano", "venezolana"], "España": ["español", "española"], "Italia": ["italiano", "italiana"], "Francia": ["francés", "francesa"], "China": ["chino", "china"], "Colombia": ["colombiano", "colombiana"], "Honduras": ["hondureño", "hondureña"], "Puerto Rico": ["puertorriqueño", "puertorriqueña"], "Cuba": ["cubano", "cubana"], "México": ["mexicano", "mexicana"] };
 function gentilicio(pais, gen) {
   const g = GENT[pais];
   if (g) return g[gen === "F" ? 1 : 0];
@@ -91,7 +90,11 @@ function mapearEirl(db, opts = {}) {
     + civil(base.maritalStatus, gen) + ", " + profesion(base.profession, gen) + ", " + docFrase;
   const dom = domicilio(base) || "[COMPLETAR domicilio del titular]";
 
-  const titular = { nombre, genero: gen, generales, documento: docFrase, domicilio: dom };
+  // Cláusula "de tránsito": el acto y el PDR se firman/legalizan en el D.N. (notario único);
+  // si el titular vive fuera del D.N., consta "accidentalmente de tránsito" (Ley 140-15, Art. 19).
+  const esDN = (prov) => /distrito\s*nacional/i.test(String(prov || ""));
+  const titular = { nombre, genero: gen, generales, documento: docFrase, domicilio: dom,
+    transitoDN: !!base.addressProvince && !esDN(base.addressProvince) };
   if (sinGen) titular._REVISAR_genero = "[COMPLETAR género M/F — la app no lo provee]";
 
   const capital = Number(db.socialCapital || 0);
@@ -121,11 +124,13 @@ function mapearEirl(db, opts = {}) {
     },
     titular,
     gerente,
+    // Lugar de firma/legalización = jurisdicción del notario único (D.N.), no la ciudad de la empresa.
+    lugarFirma: "la ciudad de Santo Domingo de Guzmán, Distrito Nacional, capital de la República Dominicana",
     fechas: {
       redaccionLarga: fp ? fp.larga : C,   // "a los X días del mes de MES del año ... (AAAA)"
     },
     poder: {
-      ciudad: lugarCorto(db.companyCity, db.companyProvince),
+      ciudad: "Santo Domingo de Guzmán, Distrito Nacional",
       fechaLarga: fp ? fp.redaccion : C,
       testigo: NT.testigo,
     },

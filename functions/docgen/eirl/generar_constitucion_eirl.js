@@ -124,6 +124,10 @@ const elSenor = FE_F ? "la señora" : "el señor";
 const ElSenor = FE_F ? "la Señora" : "el Señor";
 const domiciliadoR = FE_F ? "domiciliada y residente en " : "domiciliado y residente en ";
 const domFrase = (dom) => domiciliadoR + dom + ", República Dominicana";
+// Cláusula de comparecencia: acto y PDR se firman/legalizan en la jurisdicción del notario
+// (D.N.); el titular domiciliado fuera consta "de tránsito" (Ley 140-15, Art. 19).
+const TRANSITO_DN = T.transitoDN ? ", y accidentalmente de tránsito en la ciudad de Santo Domingo de Guzmán, Distrito Nacional" : "";
+const LUGAR_FIRMA = D.lugarFirma || E.ciudad;
 
 // =====================================================================
 // DOC 1 — ACTO CONSTITUTIVO (Acto bajo firma privada)
@@ -133,7 +137,7 @@ function docActo() {
   c.push(P([RB(DEN, { sc: true, spacing: SC, size: T_EMPRESA })], { align: AlignmentType.CENTER, after: 30 }));
   c.push(P([RB("Acto bajo firma privada de constitución de E.I.R.L.", { sc: true, spacing: SC, size: T_DOC, color: "333333" })], { align: AlignmentType.CENTER, after: 240, border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: RULE, space: 8 } } }));
 
-  c.push(P([R("Quien suscribe, "), RB(upper(T.nombre)), R(", " + T.generales + ", " + domFrase(T.domicilio) + ", por medio del presente acto declaro la voluntad de constituir una empresa individual de responsabilidad limitada, la cual se regirá por los siguientes")]));
+  c.push(P([R("Quien suscribe, "), RB(upper(T.nombre)), R(", " + T.generales + ", " + domFrase(T.domicilio) + TRANSITO_DN + ", por medio del presente acto declaro la voluntad de constituir una empresa individual de responsabilidad limitada, la cual se regirá por los siguientes")]));
   c.push(P([RB("ESTATUTOS", { sc: true, spacing: SC })], { align: AlignmentType.CENTER, before: 40, after: 60 }));
 
   // ----- CAPÍTULO PRIMERO -----
@@ -223,7 +227,7 @@ function docActo() {
 
   // legalización notarial (un solo firmante)
   c.push(SPACER(220));
-  c.push(P([R("Yo, "), RB(NO.nombre), R(", " + NO.credencial + ", "), RB("CERTIFICO Y DOY FE"), R(" que la firma que antecede fue puesta libre y voluntariamente en mi presencia por " + ElSenor + " "), RB(upper(T.nombre)), R(", de generales que constan, quien me asegura que es la firma que acostumbra a usar en todos sus actos, por lo que debe merecer entero crédito. En " + E.ciudad + ", " + FE.redaccionLarga + ".")]));
+  c.push(P([R("Yo, "), RB(NO.nombre), R(", " + NO.credencial + ", "), RB("CERTIFICO Y DOY FE"), R(" que la firma que antecede fue puesta libre y voluntariamente en mi presencia por " + ElSenor + " "), RB(upper(T.nombre)), R(", de generales que constan, quien me asegura que es la firma que acostumbra a usar en todos sus actos, por lo que debe merecer entero crédito. En " + LUGAR_FIRMA + ", " + FE.redaccionLarga + ".")]));
   firmaCentrada(c, NO.nombre, ["Notario Público"], 280);
   return buildDocument("Acto Constitutivo", c);
 }
@@ -241,7 +245,7 @@ function litItems(c, items, kind) {
 function docPoder() {
   const c = [];
   c.push(P([RB("Poder de Representación", { sc: true, spacing: SC, size: T_DOC })], { align: AlignmentType.CENTER, after: 240, border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: RULE, space: 8 } } }));
-  c.push(P([RB("QUIEN SUSCRIBE: "), R(elSenor + " "), RB(upper(T.nombre)), R(", " + T.generales + ", " + domFrase(T.domicilio) + " (en adelante, el “PODERDANTE”).")]));
+  c.push(P([RB("QUIEN SUSCRIBE: "), R(elSenor + " "), RB(upper(T.nombre)), R(", " + T.generales + ", " + domFrase(T.domicilio) + TRANSITO_DN + " (en adelante, el “PODERDANTE”).")]));
   c.push(P([RB("OTORGA PODER: "), R("Tan amplio y suficiente como en derecho sea necesario a la sociedad "), RB("SMART BIZ SERVICES, SRL"), R(", Registro Nacional de Contribuyentes (RNC) No. 1-31-68858-6, con domicilio social en la Calle Padres Paúles No. 61, Apto. 5-A, Ensanche Ozama, Santo Domingo Este, República Dominicana; debidamente representada por su Gerente General, el señor "), RB("JULIO DARWIN MENDOZA ESTRELLA"), R(", dominicano, mayor de edad, titular de la cédula de identidad y electoral No. 223-0072682-9 (en adelante, el “APODERADO”), para que, actuando en nombre y representación del PODERDANTE, tal como si fuera él mismo, pueda realizar, en el marco del plan de servicios “"), F(PLAN, { bold: true }), R("” contratado con dicha sociedad, de manera enunciativa, mas no limitativa, las siguientes acciones:")]));
   c.push(P([RB("PRIMERO: FACULTADES DE GESTIÓN ADMINISTRATIVA. "), R("Solicitar, depositar, tramitar, gestionar, modificar, retirar y firmar toda la documentación necesaria ante las autoridades competentes para:")], { after: 40 }));
   litItems(c, [

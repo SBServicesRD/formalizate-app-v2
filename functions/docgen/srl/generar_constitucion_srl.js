@@ -478,6 +478,9 @@ function nominaTabla(c) {
 // =====================================================================
 // DOC 3 — PODER DE REPRESENTACIÓN (PDR) — versión revisada/completa
 // =====================================================================
+// Cláusula de comparecencia: el PDR se firma/legaliza en la jurisdicción del notario
+// (D.N.); los firmantes domiciliados fuera constan "de tránsito" (Ley 140-15, Art. 19).
+const TRANSITO_DN = ", y accidentalmente de tránsito en la ciudad de Santo Domingo de Guzmán, Distrito Nacional, República Dominicana";
 function docPoder() {
   const c = [];
   c.push(P([RB("Poder de Representación", { sc: true, spacing: SC, size: T_DOC })], { align: AlignmentType.CENTER, after: 240, border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: RULE, space: 8 } } }));
@@ -486,7 +489,7 @@ function docPoder() {
   socios.forEach((p, i) => {
     if (i > 0) susc.push(R(i === socios.length - 1 ? "; y " : "; "));
     susc.push(RB(upper(p.nombre)));
-    susc.push(R(", " + p.generales.replace(/^domini(cano|cana)/, p.genero === "F" ? "dominicana" : "dominicano") + ", con domicilio y residencia en " + p.domicilio));
+    susc.push(R(", " + p.generales.replace(/^domini(cano|cana)/, p.genero === "F" ? "dominicana" : "dominicano") + ", con domicilio y residencia en " + p.domicilio + (p.transitoDN ? TRANSITO_DN : "")));
   });
   susc.push(R(" (en adelante, " + (socios.length > 1 ? 'los "PODERDANTES"' : 'el "PODERDANTE"') + ")."));
   c.push(P(susc));

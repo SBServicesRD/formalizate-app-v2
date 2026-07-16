@@ -71,7 +71,7 @@ function fechaPartes(f) {
 }
 
 // ---------- nacionalidad / documento / generales ----------
-const GENT = { "República Dominicana": ["dominicano", "dominicana"], "Dominicana": ["dominicano", "dominicana"], "Haití": ["haitiano", "haitiana"], "Estados Unidos": ["estadounidense", "estadounidense"], "Venezuela": ["venezolano", "venezolana"], "España": ["español", "española"], "Italia": ["italiano", "italiana"], "Francia": ["francés", "francesa"], "China": ["chino", "china"] };
+const GENT = { "República Dominicana": ["dominicano", "dominicana"], "Dominicana": ["dominicano", "dominicana"], "Haití": ["haitiano", "haitiana"], "Estados Unidos": ["estadounidense", "estadounidense"], "Venezuela": ["venezolano", "venezolana"], "España": ["español", "española"], "Italia": ["italiano", "italiana"], "Francia": ["francés", "francesa"], "China": ["chino", "china"], "Honduras": ["hondureño", "hondureña"], "Colombia": ["colombiano", "colombiana"], "Puerto Rico": ["puertorriqueño", "puertorriqueña"], "Cuba": ["cubano", "cubana"], "México": ["mexicano", "mexicana"] };
 function gentilicio(pais, gen) { const g = GENT[pais]; return g ? g[gen === "F" ? 1 : 0] : (pais || "[COMPLETAR nacionalidad]"); }
 function civil(estado, gen) {
   const e = String(estado || "").toLowerCase();
@@ -106,36 +106,23 @@ function lugarSociedad(city, prov) {
   return /Distrito Nacional/.test(corto) ? corto + ", capital de la República Dominicana" : corto + ", República Dominicana";
 }
 
-// ---------- notario y testigo por región ----------
-// Solo dos notarios: Distrito Nacional (Franklin) y provincia Santo Domingo / Gran Santo Domingo (Vladimir).
-// Gran Santo Domingo = provincia "Santo Domingo" (Este/Norte/Oeste y demás), EXCLUYENDO el Distrito Nacional.
-// DN: datos de Franklin (notario) y Lucero (testigo) PENDIENTES → quedan como [COMPLETAR] hasta cargarlos.
-const NOTARIO_DN = { nombre: "LIC. FRANKLIN M. ARAUJO CANELA", jurisdiccion: "Distrito Nacional", credencial: "Notario Público de los del número para el Distrito Nacional, con Colegiatura No. 3083" };
-const TESTIGO_DN = { nombre: "Lucero López-Penha Ureña", genero: "F", generales: "dominicana, mayor de edad, portadora de la Cédula de Identidad y Electoral No. 402-2302707-5", domicilio: "Calle Puerto Rico No. 131, Alma Rosa II, Santo Domingo Este, Santo Domingo, República Dominicana" };
-const NOTARIO_GSD = { nombre: "LIC. ÁNGEL VLADIMIR DE LEÓN PÉREZ", jurisdiccion: "Distrito Nacional", credencial: "Abogado Notario Público para los del número del Distrito Nacional, colegiatura No. 2583 y cédula de identidad y electoral No. 001-0062812-2" };
-const TESTIGO_GSD = { nombre: "Xiomara Reyes Reyes", genero: "F", generales: "dominicana, mayor de edad, portadora de la Cédula de Identidad y Electoral No. 001-0875614-9", domicilio: "Calle Ultramar No. 8, Villa Faro, Santo Domingo Este, Provincia Santo Domingo, República Dominicana" };
-// Puerto Plata (extraído del expediente CRISOCOLA).
-const NOTARIO_PP = { nombre: "LIC. FELIX FELIPE", jurisdiccion: "Puerto Plata", credencial: "Notario Público de los del número para el Municipio de Puerto Plata, con estudio profesional ubicado en la Calle Mella No. 22-A, de esta ciudad, provisto del carnet del Colegio de Abogados de la República Dominicana No. 055-257-87, del Colegio de Notarios No. 1222 y cédula personal y electoral No. 037-0000716-8" };
-const TESTIGO_PP = { nombre: "Eridania Guzmán Duarte", genero: "F", generales: "dominicana, mayor de edad, portadora de la Cédula de Identidad y Electoral No. 037-0118193-9", domicilio: "Municipio de Puerto Plata, Provincia Puerto Plata, República Dominicana" };
-function esGranSantoDomingo(prov) {
-  const p = String(prov || "").trim().toLowerCase();
-  if (/distrito\s*nacional/.test(p)) return false;
-  return /^santo domingo\b/.test(p) || /santo domingo\s*(este|norte|oeste)/.test(p);
-}
-function esPuertoPlata(prov, city) {
-  const s = (String(prov || "") + " " + String(city || "")).toLowerCase();
-  return /puerto plata|sos[uú]a|cabarete/.test(s);
-}
-function notariaPorRegion(city, prov) {
-  if (esGranSantoDomingo(prov)) return { notario: NOTARIO_GSD, testigo: TESTIGO_GSD };
-  if (esPuertoPlata(prov, city)) return { notario: NOTARIO_PP, testigo: TESTIGO_PP };
-  if (/distrito\s*nacional/.test(String(prov || "").toLowerCase())) return { notario: NOTARIO_DN, testigo: TESTIGO_DN };
-  // Región aún no definida (otras provincias): marcar en rojo para no firmar con notario equivocado.
-  const p = String(prov || "provincia no indicada").trim();
-  return {
-    notario: { nombre: "[COMPLETAR notario — " + p + "]", jurisdiccion: p, credencial: "[COMPLETAR credenciales del notario para " + p + "]" },
-    testigo: { nombre: "[COMPLETAR testigo — " + p + "]", genero: "F", generales: "[COMPLETAR generales del testigo]", domicilio: "[COMPLETAR domicilio del testigo]" },
-  };
+// ---------- notario único (política SBS jul-2026) ----------
+// UN SOLO notario para TODOS los expedientes, sin importar la provincia de la empresa:
+// Franklin (D.N.). Base legal: Ley 140-15 Art. 19 — la competencia territorial obliga al
+// NOTARIO (instrumentar dentro de su demarcación), no a las partes; la restricción estricta
+// es solo para actos sobre inmuebles. Los actos se firman/legalizan EN el D.N. y los
+// firmantes domiciliados fuera llevan la cláusula "accidentalmente de tránsito" (práctica
+// ya usada y aceptada en expedientes SBS: Culinatus, Crisocola).
+const NOTARIO_UNICO = { nombre: "LIC. FRANKLIN M. ARAUJO CANELA", jurisdiccion: "Distrito Nacional", credencial: "Notario Público de los del número para el Distrito Nacional, con Colegiatura No. 3083" };
+const TESTIGO_UNICO = { nombre: "Lucero López-Penha Ureña", genero: "F", generales: "dominicana, mayor de edad, portadora de la Cédula de Identidad y Electoral No. 402-2302707-5", domicilio: "Calle Puerto Rico No. 131, Alma Rosa II, Santo Domingo Este, provincia Santo Domingo, y accidentalmente de tránsito en la ciudad de Santo Domingo de Guzmán, Distrito Nacional, República Dominicana" };
+// Lugar único de firma/legalización = jurisdicción del notario.
+const LUGAR_FIRMA = "Santo Domingo de Guzmán, Distrito Nacional";
+const esDN = (prov) => /distrito\s*nacional/i.test(String(prov || ""));
+// (Reserva, por si se reactivan notarios regionales:
+//  Vladimir De León Pérez col. 2583 + Xiomara Reyes Reyes [prov. Santo Domingo];
+//  Felix Felipe Col. Notarios 1222 + Eridania Guzmán Duarte [Puerto Plata].)
+function notariaPorRegion() {
+  return { notario: NOTARIO_UNICO, testigo: TESTIGO_UNICO };
 }
 
 const valorNominal = 100; // RD$100 por cuota (estándar SBS)
@@ -169,6 +156,8 @@ function mapear(db, opts = {}) {
       valorPagado: pesos2(cuotas * valorNominal),
       gerente: roles.includes("gerente"),
       preside: roles.includes("gerente"),
+      // Cláusula "de tránsito" en el PDR: solo si su domicilio consta y está fuera del D.N.
+      transitoDN: !!p.addressProvince && !esDN(p.addressProvince),
     };
     if (sinGen) s._REVISAR_genero = "[COMPLETAR género M/F — la app no lo provee]";
     return s;
@@ -219,7 +208,9 @@ function mapear(db, opts = {}) {
       redaccionLarga: fp ? fp.redaccion : C,
     },
     poder: {
-      ciudad: lugarCorto(db.companyCity, db.companyProvince),
+      // El PDR se firma y legaliza en la jurisdicción del notario único (D.N.),
+      // no en la ciudad de la empresa. Los socios de fuera llevan "de tránsito".
+      ciudad: LUGAR_FIRMA,
       vigenciaLetras: "noventa (90) días",
       testigo: NT.testigo,
       fechaLarga: fp ? fp.redaccion : C,
