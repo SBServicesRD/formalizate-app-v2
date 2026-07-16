@@ -21,7 +21,7 @@ setGlobalOptions({
   region: "us-central1",
   // Secretos desde Secret Manager (ya NO viven en functions/.env):
   // ZOHO_PASSWORD es la app password de GMAIL (nombre histórico engañoso).
-  secrets: ["ZOHO_PASSWORD", "CUSTOMER_MAGIC_SECRET", "INVESTOR_MAGIC_SECRET", "ADMIN_MAGIC_SECRET", "NOTION_API_KEY", "VENTAS_SMTP_PASSWORD", "WHATSAPP_TOKEN", "GEMINI_API_KEY"],
+  secrets: ["ZOHO_PASSWORD", "CUSTOMER_MAGIC_SECRET", "INVESTOR_MAGIC_SECRET", "ADMIN_MAGIC_SECRET", "NOTION_API_KEY", "VENTAS_SMTP_PASSWORD", "WHATSAPP_TOKEN", "GEMINI_API_KEY", "GA4_SA_KEY"],
 });
 
 const app = initializeApp();
@@ -697,6 +697,36 @@ async function notionApi(path, method, body) {
   return { ok: r.ok, status: r.status, json: await r.json().catch(() => ({})) };
 }
 
+// Métricas web de la semana (GA4 sesiones + Search Console) usando la cuenta
+// de servicio ga4-agent (llave en Secret Manager GA4_SA_KEY). Si Google falla,
+// devuelve null y el update del funnel sigue sin las columnas web.
+async function metricasWebSemana(w) {
+  try {
+    const { JWT } = require("google-auth-library");
+    const sa = JSON.parse(process.env.GA4_SA_KEY);
+    const client = new JWT({ email: sa.client_email, key: sa.private_key,
+      scopes: ["https://www.googleapis.com/auth/analytics.readonly", "https://www.googleapis.com/auth/webmasters.readonly"] });
+    const tok = (await client.getAccessToken()).token;
+    const endD = new Date(w.end); endD.setUTCDate(endD.getUTCDate() - 1);
+    const endISO = endD.toISOString().slice(0, 10);
+    const ga = await (await fetch("https://analyticsdata.googleapis.com/v1beta/properties/514186424:runReport", {
+      method: "POST", headers: { "Authorization": "Bearer " + tok, "Content-Type": "application/json" },
+      body: JSON.stringify({ dateRanges: [{ startDate: w.monday, endDate: endISO }], metrics: [{ name: "sessions" }] }),
+    })).json();
+    const ses = Number(((ga.rows || [])[0] || {}).metricValues?.[0]?.value || 0);
+    const sc = await (await fetch("https://searchconsole.googleapis.com/webmasters/v3/sites/sc-domain%3Aformalizate.app/searchAnalytics/query", {
+      method: "POST", headers: { "Authorization": "Bearer " + tok, "Content-Type": "application/json" },
+      body: JSON.stringify({ startDate: w.monday, endDate: endISO }),
+    })).json();
+    const row = (sc.rows || [])[0] || {};
+    return { ses, cl: Math.round(row.clicks || 0), im: Math.round(row.impressions || 0),
+      pos: row.position ? Math.round(row.position * 10) / 10 : null };
+  } catch (err) {
+    console.warn("metricasWebSemana falló (se sigue sin web):", err.message);
+    return null;
+  }
+}
+
 async function actualizarSemanaControl(w) {
   // Ventas + ingreso desde Firestore (pagadas, por fecha)
   const snap = await db.collection("ventas").where("fecha", ">=", w.start).where("fecha", "<", w.end).get();
@@ -720,15 +750,21 @@ async function actualizarSemanaControl(w) {
   });
   const row = (find.json.results || [])[0];
   if (!row) return { semana: w.etiqueta, error: "fila no encontrada" };
-  await notionApi("pages/" + row.id, "PATCH", {
-    properties: {
-      "Leads inbound": { number: leads },
-      "Ventas totales": { number: ventas },
-      "Ventas inbound": { number: ventas },
-      "Ingreso total (RD$)": { number: ingreso },
-    },
-  });
-  return { semana: w.etiqueta, leads, ventas, ingreso };
+  const props = {
+    "Leads inbound": { number: leads },
+    "Ventas totales": { number: ventas },
+    "Ventas inbound": { number: ventas },
+    "Ingreso total (RD$)": { number: ingreso },
+  };
+  const web = await metricasWebSemana(w);
+  if (web) {
+    props["Sesiones web (GA4)"] = { number: web.ses };
+    props["Clics SEO"] = { number: web.cl };
+    props["Impresiones SEO"] = { number: web.im };
+    if (web.pos !== null) props["Posición SEO"] = { number: web.pos };
+  }
+  await notionApi("pages/" + row.id, "PATCH", { properties: props });
+  return { semana: w.etiqueta, leads, ventas, ingreso, web };
 }
 
 async function correrControlSemanal() {
