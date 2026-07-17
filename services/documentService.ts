@@ -1,8 +1,21 @@
 import { FormData as AppFormData, Partner, Titular } from '../types';
 import { storage, db, auth } from './firebase';
-import { ref, uploadBytes } from 'firebase/storage';
+import { ref, uploadBytesResumable } from 'firebase/storage';
 import { signInAnonymously } from 'firebase/auth';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+
+// --- Presupuestos de tiempo del envío ---
+// Ninguna operación de red del envío puede quedarse colgada indefinidamente:
+// cada subida cancela si no reporta progreso (estancamiento) o excede el tope
+// por intento, con reintentos ante fallo transitorio; el POST final aborta por
+// AbortController. En móvil con señal débil, uploadBytes podía no resolver ni
+// rechazar jamás — el spinner "Finalizando..." eterno y el expediente perdido.
+const UPLOAD_STALL_MS = 30_000;      // sin progreso durante 30s → cancelar
+const UPLOAD_ATTEMPT_CAP_MS = 120_000; // tope absoluto por intento de subida
+const UPLOAD_MAX_ATTEMPTS = 3;       // 1 intento + 2 reintentos
+const UPLOAD_RETRY_BASE_MS = 1_000;
+const SUBMIT_FETCH_TIMEOUT_MS = 30_000;
+const AUTH_TIMEOUT_MS = 15_000;
 
 type Uploadable = File | string | null | undefined;
 
@@ -34,11 +47,49 @@ const isBrowserFile = (value: unknown): value is File => typeof File !== 'undefi
 const ensureUploadAuth = async (): Promise<void> => {
     if (auth.currentUser) return;
     try {
-        await signInAnonymously(auth);
+        await Promise.race([
+            signInAnonymously(auth),
+            new Promise((_, reject) => setTimeout(
+                () => reject(new Error('Tiempo de espera agotado en auth anónima.')), AUTH_TIMEOUT_MS
+            ))
+        ]);
     } catch (e) {
         console.warn('Auth anónima no disponible; se intenta subir igual:', e);
     }
 };
+
+// Un intento de subida cancelable. uploadBytesResumable permite .cancel(),
+// así que un detector de estancamiento (sin eventos de progreso durante
+// UPLOAD_STALL_MS) o el tope absoluto del intento SIEMPRE liberan la promesa.
+// El timer de estancamiento se rearma con cada progreso: un archivo grande en
+// conexión lenta pero viva no falla por lento, solo por muerto.
+const uploadOnce = (file: File, fullPath: string): Promise<string> =>
+    new Promise<string>((resolve, reject) => {
+        const task = uploadBytesResumable(ref(storage, fullPath), file);
+        let stallTimer: ReturnType<typeof setTimeout> | undefined;
+        const capTimer = setTimeout(() => {
+            task.cancel();
+            reject(new Error('La subida excedió el tiempo máximo.'));
+        }, UPLOAD_ATTEMPT_CAP_MS);
+        const armStallTimer = () => {
+            clearTimeout(stallTimer);
+            stallTimer = setTimeout(() => {
+                task.cancel();
+                reject(new Error('La subida se quedó sin progreso (conexión estancada).'));
+            }, UPLOAD_STALL_MS);
+        };
+        const cleanup = () => {
+            clearTimeout(stallTimer);
+            clearTimeout(capTimer);
+        };
+        armStallTimer();
+        task.on(
+            'state_changed',
+            armStallTimer,
+            (error) => { cleanup(); reject(error); },
+            () => { cleanup(); resolve(task.snapshot.ref.fullPath); }
+        );
+    });
 
 // Sube el archivo y devuelve su RUTA en Storage (no la URL de descarga).
 // Generar la URL con getDownloadURL() requiere permiso de LECTURA, que desde
@@ -48,10 +99,22 @@ const ensureUploadAuth = async (): Promise<void> => {
 // (Admin SDK, ignora las reglas) convierte esta ruta en una URL descargable.
 const uploadFileAndGetPath = async (file: File, folder: string): Promise<string> => {
     const cleanName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
-    const fileName = `${Date.now()}-${cleanName}`;
-    const storageRef = ref(storage, `${folder}/${fileName}`);
-    const snapshot = await uploadBytes(storageRef, file);
-    return snapshot.ref.fullPath;
+    let lastError: unknown;
+    for (let intento = 1; intento <= UPLOAD_MAX_ATTEMPTS; intento++) {
+        // Nombre nuevo por intento: un intento cancelado a medias nunca pisa
+        // al que sí termina.
+        const fullPath = `${folder}/${Date.now()}-${cleanName}`;
+        try {
+            return await uploadOnce(file, fullPath);
+        } catch (error) {
+            lastError = error;
+            console.warn(`Subida de ${file.name} falló (intento ${intento}/${UPLOAD_MAX_ATTEMPTS}):`, error);
+            if (intento < UPLOAD_MAX_ATTEMPTS) {
+                await new Promise(r => setTimeout(r, UPLOAD_RETRY_BASE_MS * intento));
+            }
+        }
+    }
+    throw lastError instanceof Error ? lastError : new Error('No se pudo subir el archivo.');
 };
 
 // Cache de subidas por CONTENIDO (nombre|tamaño|fecha) dentro de un mismo guardado.
@@ -61,6 +124,36 @@ const uploadFileAndGetPath = async (file: File, folder: string): Promise<string>
 type UploadCache = Map<string, Promise<string>>;
 
 const fileKey = (f: File): string => `${f.name}|${f.size}|${f.lastModified}`;
+
+// --- Estado del envío EN CURSO, compartido entre reintentos del usuario ---
+// Si el envío falla a medias y el cliente pulsa "Finalizar" otra vez:
+// - el cache conserva lo YA subido (no se re-sube; las entradas fallidas se
+//   evictan para que el reintento las vuelva a intentar);
+// - la carpeta de cédulas es la misma (un expediente = una subcarpeta);
+// - la clave de idempotencia es la misma: el servidor la usa como ID del doc,
+//   así un POST que llegó pero cuya respuesta se perdió NO duplica la venta.
+// Todo se limpia tras un envío exitoso.
+const uploadCachePersistente: UploadCache = new Map();
+let carpetaIdsEnCurso: string | null = null;
+let claveIdempotenciaEnCurso: string | null = null;
+
+const nuevaClaveIdempotencia = (): string =>
+    (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+        ? crypto.randomUUID()
+        : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+
+const resetEstadoEnvio = (): void => {
+    uploadCachePersistente.clear();
+    carpetaIdsEnCurso = null;
+    claveIdempotenciaEnCurso = null;
+};
+
+// El reset lo dispara el FORMULARIO cuando su Promise.race observa el éxito,
+// no saveFullApplication al terminar: si el watchdog del caller ya abandonó
+// este envío y luego termina solo en segundo plano, el estado debe seguir
+// intacto para que el reintento reutilice la misma clave y el servidor
+// responda "duplicated" en vez de crear una segunda venta.
+export const confirmarEnvioExitoso = (): void => resetEstadoEnvio();
 
 const resolveUpload = async (
     fileInput: Uploadable,
@@ -79,7 +172,11 @@ const resolveUpload = async (
             const key = fileKey(fileInput);
             const existing = cache.get(key);
             if (existing) return existing;
-            const pending = uploadFileAndGetPath(fileInput, folder).catch(() => {
+            const pending = uploadFileAndGetPath(fileInput, folder).catch((error) => {
+                // Evicta la entrada fallida: el próximo reintento del usuario
+                // vuelve a subir ESTE archivo (lo ya subido se conserva).
+                cache.delete(key);
+                console.error(`Fallo definitivo subiendo ${description}:`, error);
                 throw new Error(`No se pudo subir ${description}.`);
             });
             cache.set(key, pending);
@@ -159,12 +256,21 @@ export const saveFullApplication = async (data: AppFormData): Promise<any> => {
         // reglas de Storage exigen auth para escribir.
         await ensureUploadAuth();
 
-        // Un solo cache por guardado: el mismo archivo se sube una única vez.
-        const uploadCache: UploadCache = new Map();
+        // Cache persistente entre reintentos: el mismo archivo se sube una
+        // única vez aunque el usuario tenga que pulsar "Finalizar" varias veces.
+        const uploadCache = uploadCachePersistente;
 
         // Carpeta única por solicitud: agrupa las cédulas de ESTE expediente
-        // en vez de mezclarlas en la carpeta plana global.
-        const carpetaIds = `identidades/${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+        // en vez de mezclarlas en la carpeta plana global. Se conserva entre
+        // reintentos para no partir el expediente en dos carpetas.
+        if (!carpetaIdsEnCurso) {
+            carpetaIdsEnCurso = `identidades/${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+        }
+        const carpetaIds = carpetaIdsEnCurso;
+
+        if (!claveIdempotenciaEnCurso) {
+            claveIdempotenciaEnCurso = nuevaClaveIdempotencia();
+        }
 
         const [logoUrl, onapiCertUrl, receiptUrl, partnersWithUrls, titularsWithUrls] = await Promise.all([
             resolveUpload(logoFile, 'logos', 'LOGO', uploadCache),
@@ -180,7 +286,7 @@ export const saveFullApplication = async (data: AppFormData): Promise<any> => {
         const currentUser = auth.currentUser;
         const esUsuarioReal = !!currentUser && !currentUser.isAnonymous;
 
-        const payload: SerializedForm & { userId?: string; userEmail?: string | null } = {
+        const payload: SerializedForm & { userId?: string; userEmail?: string | null; idempotencyKey: string } = {
             ...(textFields as SerializedForm),
             logoFile: logoUrl,
             onapiCertificate: onapiCertUrl,
@@ -188,24 +294,43 @@ export const saveFullApplication = async (data: AppFormData): Promise<any> => {
             partners: partnersWithUrls,
             titulars: titularsWithUrls,
             userId: esUsuarioReal ? currentUser.uid : undefined,
-            userEmail: esUsuarioReal ? (currentUser.email || null) : null
+            userEmail: esUsuarioReal ? (currentUser.email || null) : null,
+            idempotencyKey: claveIdempotenciaEnCurso
         };
 
         const payloadRecord = payload as Record<string, unknown>;
         delete payloadRecord.identityDocFront;
         delete payloadRecord.identityDocBack;
 
-        const response = await fetch('/api/procesar-solicitud', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
+        // POST con timeout: sin esto, un fetch que nunca responde dejaba el
+        // envío colgado para siempre. Si aborta, reintentar es seguro: la clave
+        // de idempotencia garantiza que no se crean ventas duplicadas.
+        const controller = new AbortController();
+        const fetchTimer = setTimeout(() => controller.abort(), SUBMIT_FETCH_TIMEOUT_MS);
+        let response: Response;
+        try {
+            response = await fetch('/api/procesar-solicitud', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+                signal: controller.signal
+            });
+        } catch {
+            throw new Error(
+                'Se perdió la conexión al enviar el expediente. Tus archivos ya subidos quedaron guardados: ' +
+                'revisa tu internet y pulsa "Finalizar Expediente" de nuevo — no se creará un duplicado ni se te cobrará de nuevo.'
+            );
+        } finally {
+            clearTimeout(fetchTimer);
+        }
 
         if (!response.ok) {
             const errorMessage = await response.text().catch(() => `HTTP ${response.status}`);
             throw new Error(`Error al enviar la solicitud: ${errorMessage}`);
         }
 
+        // Sin reset aquí: lo hace el formulario vía confirmarEnvioExitoso()
+        // solo cuando ÉL observa el éxito (ver comentario de esa función).
         return await response.json();
     } catch (error) {
         if (error instanceof Error) {

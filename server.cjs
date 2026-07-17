@@ -184,7 +184,10 @@ app.use(express.json());
 const firebaseApp = admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
 });
-const db = getFirestore(firebaseApp, 'formalizate-app-prod'); // Especificar base de datos de producción
+// Base de datos NOMBRADA de producción. FIRESTORE_DB solo existe para poder
+// apuntar pruebas locales a otra base — en Cloud Run no se define y siempre
+// cae en formalizate-app-prod.
+const db = getFirestore(firebaseApp, process.env.FIRESTORE_DB || 'formalizate-app-prod');
 
 // ============================================
 // STORAGE: generación de URLs de descarga (server-side)
@@ -301,10 +304,31 @@ app.get('/api/verify-payment-status', async (req, res) => {
 });
 
 app.post('/api/procesar-solicitud', async (req, res) => {
+  // Idempotencia: el wizard manda una clave única por expediente que usamos
+  // como ID del documento. Si el POST se reintenta (timeout, respuesta perdida)
+  // devolvemos la venta ya creada en vez de duplicarla. Los clientes viejos sin
+  // clave siguen funcionando con un ID autogenerado (sin protección extra).
+  const clave = req.body && req.body.idempotencyKey;
+  const claveValida = typeof clave === 'string' && /^[A-Za-z0-9_-]{10,64}$/.test(clave);
   try {
-    const datos = await resolveStoragePaths(req.body);
+    const docRef = claveValida
+      ? db.collection('ventas').doc(clave)
+      : db.collection('ventas').doc();
 
-    const docRef = await db.collection('ventas').add({
+    if (claveValida) {
+      // El chequeo va ANTES de resolveStoragePaths: regenerar tokens de
+      // descarga invalidaría las URLs ya guardadas en la venta original.
+      const existente = await docRef.get();
+      if (existente.exists) {
+        console.log('🔁 Reintento de solicitud ya procesada (idempotencia):', docRef.id);
+        return res.json({ success: true, id: docRef.id, duplicated: true });
+      }
+    }
+
+    const datos = await resolveStoragePaths(req.body);
+    delete datos.idempotencyKey; // ya vive como ID del doc
+
+    await docRef.create({
         ...datos,
         fecha: new Date(),
         status: 'pendiente'
@@ -313,6 +337,12 @@ app.post('/api/procesar-solicitud', async (req, res) => {
     console.log('📝 Procesando solicitud ID:', docRef.id, 'Plan:', datos.packageName);
     res.json({ success: true, id: docRef.id });
   } catch (e) {
+    // ALREADY_EXISTS: dos reintentos simultáneos con la misma clave — la venta
+    // ya quedó creada por el otro; para el cliente es un éxito.
+    if (claveValida && (e.code === 6 || e.code === 'already-exists')) {
+      console.log('🔁 Carrera de reintentos resuelta por idempotencia:', clave);
+      return res.json({ success: true, id: clave, duplicated: true });
+    }
     console.error(e);
     res.status(500).json({ error: 'Error guardando en base de datos' });
   }

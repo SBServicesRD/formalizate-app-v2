@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { FormData } from '../types';
 import { NCF_OPTIONS, FISCAL_CLOSING_DATE, ALLOWED_FILE_TYPES } from '../constants';
 import { validateRequired, formatPhoneNumber, validateEmail, formatDateMask, validateDate, validatePhoneNumber, sanitizeInput } from '../utils/validation';
-import { saveFullApplication } from '../services/documentService';
+import { saveFullApplication, confirmarEnvioExitoso } from '../services/documentService';
 import {
     AlertCircle,
     AlertTriangle,
@@ -305,6 +305,12 @@ const PostPaymentForm: React.FC<PostPaymentFormProps> = ({ formData, updateFormD
         setIsSubmitting(true);
         setSubmissionError(null);
 
+        // Watchdog global: aunque toda la tubería de timeouts internos fallara,
+        // el spinner "Finalizando..." NUNCA puede quedar infinito. El presupuesto
+        // cubre el peor caso legítimo (3 intentos de subida lenta + POST).
+        const SUBMIT_WATCHDOG_MS = 300_000;
+        let watchdogTimer: ReturnType<typeof setTimeout> | undefined;
+
         try {
             const sanitizedFormData = {
                 ...formData,
@@ -312,7 +318,19 @@ const PostPaymentForm: React.FC<PostPaymentFormProps> = ({ formData, updateFormD
                 socialObject: formData.socialObject ? sanitizeInput(formData.socialObject) : formData.socialObject
             };
 
-            await saveFullApplication(sanitizedFormData);
+            await Promise.race([
+                saveFullApplication(sanitizedFormData),
+                new Promise<never>((_, reject) => {
+                    watchdogTimer = setTimeout(() => reject(new Error(
+                        'Se perdió la conexión durante el envío. Revisa tu internet y pulsa "Finalizar Expediente" de nuevo — ' +
+                        'lo ya subido se conserva y no se te cobrará de nuevo.'
+                    )), SUBMIT_WATCHDOG_MS);
+                })
+            ]);
+
+            // Éxito OBSERVADO por el formulario: recién aquí es seguro liberar
+            // la clave de idempotencia y el cache de subidas del envío.
+            confirmarEnvioExitoso();
 
             // Google Ads conversion tracking (post-pago completado)
             const conversionValueByPackage: Record<string, number> = {
@@ -339,6 +357,8 @@ const PostPaymentForm: React.FC<PostPaymentFormProps> = ({ formData, updateFormD
             setSubmissionError(message);
             window.alert(`No pudimos finalizar tu expediente. Detalle: ${message}`);
             setIsSubmitting(false);
+        } finally {
+            clearTimeout(watchdogTimer);
         }
     };
 
