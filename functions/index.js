@@ -788,6 +788,100 @@ exports.conciliadorPipeline = onSchedule(
 );
 
 // ============================================================
+// VIGILANTE DIARIO — pagos sin expediente + limpieza de Auth
+// (función AISLADA; no toca las demás)
+// ============================================================
+// La huella que dejó el caso Laura Nina, vigilada todos los días:
+//  A) Ventas 'borrador' con >24h sin completar: dinero recibido y expediente
+//     a medias — seguimiento proactivo, no esperar la queja del cliente.
+//  B) Legado: cuentas de Auth con correo, >24h, sin NINGUNA venta asociada
+//     (la era pre-borradores dejaba clientes atascados exactamente así).
+//  C) Purga de sesiones anónimas de subida con >7 días: ruido sin valor.
+// Correo al admin SOLO si A o B tienen hallazgos; la purga se registra en logs.
+exports.vigilanteExpedientes = onSchedule(
+  { schedule: "0 8 * * *", timeZone: "America/Santo_Domingo", timeoutSeconds: 300, memory: "512MiB" },
+  async () => {
+    try {
+      const ahora = Date.now();
+      const hace24h = ahora - 24 * 3600 * 1000;
+      const hace7d = ahora - 7 * 24 * 3600 * 1000;
+
+      // A) Borradores atascados
+      const borradoresSnap = await db.collection("ventas").where("status", "==", "borrador").get();
+      const atascados = [];
+      borradoresSnap.forEach((d) => {
+        const v = d.data();
+        const fecha = v.fecha && v.fecha.toDate ? v.fecha.toDate() : null;
+        if (fecha && fecha.getTime() < hace24h) {
+          const nombre = v.applicant ? `${v.applicant.names || ""} ${v.applicant.surnames || ""}`.trim() : "";
+          atascados.push(`- ${v.orderId || d.id} | ${nombre || "?"} | ${v.email || "?"} | ${v.packageName || "?"} | ${v.paymentMethod || "?"} | pagó ${fecha.toISOString().slice(0, 16)}Z`);
+        }
+      });
+
+      // Correos con venta (cualquier campo de correo de la venta cuenta)
+      const ventasSnap = await db.collection("ventas").get();
+      const correosConVenta = new Set();
+      ventasSnap.forEach((d) => {
+        const v = d.data();
+        [v.email, v.userEmail, v.applicant && v.applicant.email]
+          .filter(Boolean)
+          .forEach((e) => correosConVenta.add(String(e).toLowerCase()));
+      });
+
+      // B) Huérfanos legado + C) purga de anónimas viejas
+      const huerfanos = [];
+      const anonimasViejas = [];
+      let pageToken;
+      do {
+        const page = await getAuth(app).listUsers(1000, pageToken);
+        for (const u of page.users) {
+          const creada = new Date(u.metadata.creationTime).getTime();
+          const esAnonima = !u.email && (!u.providerData || u.providerData.length === 0);
+          if (esAnonima && creada < hace7d) {
+            anonimasViejas.push(u.uid);
+          } else if (u.email && creada < hace24h && !correosConVenta.has(u.email.toLowerCase())) {
+            huerfanos.push(`- ${u.email} | cuenta creada ${u.metadata.creationTime}`);
+          }
+        }
+        pageToken = page.pageToken;
+      } while (pageToken);
+
+      let purgadas = 0;
+      if (anonimasViejas.length > 0) {
+        const res = await getAuth(app).deleteUsers(anonimasViejas);
+        purgadas = res.successCount;
+        console.log(`Vigilante: purgadas ${purgadas} sesiones anónimas >7d (${res.failureCount} fallos)`);
+      }
+
+      if (atascados.length === 0 && huerfanos.length === 0) {
+        console.log(`Vigilante: sin hallazgos (${purgadas} anónimas purgadas)`);
+        return;
+      }
+
+      const cuerpo = [
+        "Vigilante diario de expedientes — hallazgos:",
+        "",
+        atascados.length ? `PAGOS SIN EXPEDIENTE COMPLETADO (>24h) — dar seguimiento:\n${atascados.join("\n")}` : "",
+        huerfanos.length ? `CUENTAS LEGADO SIN VENTA (>24h) — posible cliente atascado:\n${huerfanos.join("\n")}` : "",
+        purgadas ? `(Limpieza: ${purgadas} sesiones anónimas >7d purgadas hoy.)` : "",
+        "",
+        "Admin: https://admin.formalizate.app",
+      ].filter(Boolean).join("\n\n");
+
+      await transporter.sendMail({
+        from: "Formalízate.app · Vigilante <ventas@formalizate.app>",
+        to: "smartbizservicesrd@gmail.com",
+        subject: `⏰ Vigilante: ${atascados.length} pago(s) sin expediente${huerfanos.length ? ` + ${huerfanos.length} cuenta(s) huérfana(s)` : ""}`,
+        text: cuerpo,
+      });
+      console.log(`Vigilante: email enviado (${atascados.length} atascados, ${huerfanos.length} huérfanos, ${purgadas} purgadas)`);
+    } catch (err) {
+      console.error("Vigilante falló:", err);
+    }
+  }
+);
+
+// ============================================================
 // CONTROL DE VENTAS SEMANAL — actualiza la tabla de Notion con datos reales
 // (Firestore = ventas/ingreso · Pipeline = leads creados en la semana).
 // Cada lunes finaliza la semana pasada y refresca la actual. Cero mantenimiento.
