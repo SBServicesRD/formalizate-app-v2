@@ -9,7 +9,7 @@
 // Así el precio aparece SOLO donde tiene sentido.
 
 function getTemplate(type, data) {
-  const { nombre, plan, monto, orderId, dashboardUrl, dashboardPin, hitoLabel, motivo, mensajeCliente, resumeUrl } = data;
+  const { nombre, plan, monto, orderId, dashboardUrl, dashboardPin, hitoLabel, motivo, mensajeCliente, resumeUrl, pinYaEnviado } = data;
 
   const styles = {
     container: "font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;",
@@ -43,7 +43,9 @@ function getTemplate(type, data) {
   const refExpediente = orderId
     ? `<p style="font-size:12px;color:#999;margin:0 0 14px;">Expediente: ${orderId}</p>` : "";
 
-  // Sección PIN (solo si se envía dashboardPin — legado).
+  // Sección PIN: con dashboardPin lo muestra (primer correo del expediente);
+  // con pinYaEnviado NO genera código nuevo — un expediente tiene UN solo PIN
+  // de por vida (el del correo "🔑 Pago registrado"), aquí solo se recuerda.
   const dashboardSection = dashboardUrl && dashboardPin ? `
     <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
     <p style="font-weight: bold; color: #1D3557;">📊 Tu Panel de Seguimiento</p>
@@ -52,7 +54,12 @@ function getTemplate(type, data) {
     <p style="text-align: center; font-size: 12px; color: #888; margin-bottom: 4px;">Tu PIN de acceso (guárdalo, es único):</p>
     <div style="text-align: center; margin-bottom: 16px;"><span style="${styles.pin}">${dashboardPin}</span></div>
     <p style="font-size: 11px; color: #aaa; text-align: center;">Si alguien más te pidió este PIN, no lo compartas. Es personal e intransferible.</p>
-  ` : "";
+  ` : (dashboardUrl && pinYaEnviado ? `
+    <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+    <p style="font-weight: bold; color: #1D3557;">📊 Tu Panel de Seguimiento</p>
+    <p style="font-size: 13px; color: #555;">Sigue el estado de tu expediente en tiempo real. Entra con el <strong>mismo PIN</strong> que te enviamos en el correo "🔑 Pago registrado" — tu PIN es uno solo y no cambia.</p>
+    <div style="text-align: center; margin: 16px 0;"><a href="${dashboardUrl}" style="${styles.btnBlue}">Ver mi Expediente</a></div>
+  ` : "");
 
   const cta  = (label) => `<center><a href="${dashboardUrl || "#"}" style="${styles.btn}">${label}</a></center>`;
   const ctaNav = (label) => `<center><a href="${dashboardUrl || "#"}" style="${styles.btnBlue}">${label}</a></center>`;

@@ -420,9 +420,11 @@ exports.onVentaCreate = onDocumentCreated(
 // FIRESTORE TRIGGER: BORRADOR COMPLETADO → EXPEDIENTE ENVIADO
 // (función AISLADA; no toca onVentaCreate ni las demás)
 // ============================================================
-// El cliente terminó el formulario de una venta nacida al pagar. Se regenera
-// el PIN (el de reanudación ya cumplió su ciclo; este es el del panel) y se
-// envía el correo transaccional que en el flujo clásico enviaba onVentaCreate.
+// El cliente terminó el formulario de una venta nacida al pagar. Se envía el
+// correo transaccional que en el flujo clásico enviaba onVentaCreate. El PIN
+// NO se regenera: un expediente = UN PIN de por vida (el del correo "pago
+// registrado", que promete "guárdalo, es único" — y lo cumple). El mismo
+// pinHash sirve para reanudar y para el panel.
 // onVentaUpdate no interfiere: 'pendiente' no coincide con ninguna de sus ramas.
 exports.onExpedienteCompletado = onDocumentUpdated(
   {
@@ -438,12 +440,9 @@ exports.onExpedienteCompletado = onDocumentUpdated(
 
       const firestoreId = after.firestoreId || event.params.ventaId;
       const customerSecret = process.env.CUSTOMER_MAGIC_SECRET;
-      let dashboardPin = null;
       let dashboardLink = null;
 
       if (customerSecret) {
-        dashboardPin = generatePin();
-        await event.data.after.ref.update({ pinHash: hashPin(dashboardPin) });
         const dashboardToken = signToken(
           { saleId: firestoreId, role: "customer", issuedAt: Math.floor(Date.now() / 1000) },
           customerSecret
@@ -471,7 +470,7 @@ exports.onExpedienteCompletado = onDocumentUpdated(
           nombre, plan, monto,
           orderId: after.orderId || firestoreId,
           dashboardUrl: dashboardLink,
-          dashboardPin,
+          pinYaEnviado: true,
         });
         if (template) {
           await sendEmail({ to: email, subject: template.subject, html: template.html });
