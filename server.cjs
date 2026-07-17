@@ -3,7 +3,7 @@
 // ============================================
 require('dotenv').config();
 
-const { getFirestore } = require('firebase-admin/firestore');
+const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { getStorage } = require('firebase-admin/storage');
 const crypto = require('crypto');
 const express = require('express');
@@ -245,6 +245,60 @@ const resolveStoragePaths = async (datos) => {
 };
 
 // ============================================
+// REANUDACIÓN DE EXPEDIENTES (ventas en estado 'borrador')
+// ============================================
+// La venta nace al PAGAR (status 'borrador') y se completa al finalizar el
+// formulario. El cliente recibe por correo (lo envía onVentaCreate en
+// functions) un enlace app.formalizate.app/?continuar=<token> + un PIN: la
+// llave de vuelta si cierra la página o cambia de dispositivo.
+// El token es el MISMO formato HMAC-JWT del dashboard de clientes y se firma/
+// verifica con CUSTOMER_MAGIC_SECRET (en Cloud Run se monta desde Secret
+// Manager con --set-secrets; sin la variable, los endpoints de reanudación
+// responden 503 pero el resto del wizard funciona igual).
+const CUSTOMER_MAGIC_SECRET = process.env.CUSTOMER_MAGIC_SECRET || '';
+
+const base64UrlEncode = (str) => Buffer.from(str).toString('base64')
+  .replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+
+const firmarTokenCliente = (saleId) => {
+  const header = base64UrlEncode(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+  const payload = base64UrlEncode(JSON.stringify({
+    saleId, role: 'customer', issuedAt: Math.floor(Date.now() / 1000)
+  }));
+  const data = `${header}.${payload}`;
+  const signature = crypto.createHmac('sha256', CUSTOMER_MAGIC_SECRET)
+    .update(data).digest('base64')
+    .replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+  return `${data}.${signature}`;
+};
+
+const verificarTokenCliente = (token) => {
+  if (!token || !CUSTOMER_MAGIC_SECRET || typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  const data = `${parts[0]}.${parts[1]}`;
+  const expected = crypto.createHmac('sha256', CUSTOMER_MAGIC_SECRET)
+    .update(data).digest('base64')
+    .replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+  const a = Buffer.from(parts[2]);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
+    return payload && payload.saleId ? payload : null;
+  } catch {
+    return null;
+  }
+};
+
+// Mismo hash de PIN que functions (mayúsculas + sha256).
+const hashPin = (pin) => crypto.createHash('sha256')
+  .update(String(pin).toUpperCase().trim()).digest('hex');
+
+const esTexto = (v, max) => typeof v === 'string' && v.length <= max;
+const textoOpcional = (v, max) => (esTexto(v, max) ? v : null);
+
+// ============================================
 // RATE LIMITERS (usando constantes de configuración)
 // ============================================
 
@@ -320,6 +374,23 @@ app.post('/api/procesar-solicitud', async (req, res) => {
       // descarga invalidaría las URLs ya guardadas en la venta original.
       const existente = await docRef.get();
       if (existente.exists) {
+        // Venta nacida al pagar: completar el borrador en el MISMO doc.
+        // update() preserva lo que puso onVentaCreate (orderId, pinHash,
+        // fechaCreacion) y la fecha del pago; el formulario autoguardado y el
+        // contador de PIN dejan de tener razón de ser.
+        if (existente.data().status === 'borrador') {
+          const datos = await resolveStoragePaths(req.body);
+          delete datos.idempotencyKey;
+          await docRef.update({
+            ...datos,
+            status: 'pendiente',
+            fechaCompletado: new Date(),
+            formularioGuardado: FieldValue.delete(),
+            reanudacionIntentos: FieldValue.delete()
+          });
+          console.log('📝 Borrador completado como expediente:', docRef.id, 'Plan:', datos.packageName);
+          return res.json({ success: true, id: docRef.id, completado: true });
+        }
         console.log('🔁 Reintento de solicitud ya procesada (idempotencia):', docRef.id);
         return res.json({ success: true, id: docRef.id, duplicated: true });
       }
@@ -345,6 +416,177 @@ app.post('/api/procesar-solicitud', async (req, res) => {
     }
     console.error(e);
     res.status(500).json({ error: 'Error guardando en base de datos' });
+  }
+});
+
+// ============================================
+// REGISTRAR PAGO — la venta nace aquí, como borrador
+// ============================================
+// Se llama en el INSTANTE del pago (PayPal capturado o comprobante de
+// transferencia ya subido a Storage). A partir de este punto ningún pago es
+// invisible: aunque el cliente nunca termine el formulario, el dinero y su
+// contacto quedan registrados y el admin lo ve. Idempotente igual que
+// procesar-solicitud: draftKey = ID del doc; el reintento no duplica.
+app.post('/api/registrar-pago', async (req, res) => {
+  const b = req.body || {};
+  const clave = b.draftKey;
+  if (!(typeof clave === 'string' && /^[A-Za-z0-9_-]{10,64}$/.test(clave))) {
+    return res.status(400).json({ error: 'draftKey inválida' });
+  }
+  if (!['paid', 'pending_confirmation'].includes(b.paymentStatus)) {
+    return res.status(400).json({ error: 'paymentStatus inválido' });
+  }
+  const applicant = b.applicant && typeof b.applicant === 'object' ? b.applicant : {};
+  const email = textoOpcional(applicant.email, 200);
+  if (!email) {
+    return res.status(400).json({ error: 'Falta el correo del solicitante' });
+  }
+  try {
+    const docRef = db.collection('ventas').doc(clave);
+    const responder = () => res.json({
+      success: true,
+      ventaId: docRef.id,
+      // Token para autoguardar avance desde ESTE dispositivo sin esperar el
+      // correo. Sin secreto configurado no hay token y el cliente simplemente
+      // no autoguarda (el resto del flujo no depende de esto).
+      token: CUSTOMER_MAGIC_SECRET ? firmarTokenCliente(docRef.id) : null
+    });
+
+    const existente = await docRef.get();
+    if (existente.exists) {
+      console.log('🔁 Reintento de registro de pago (idempotencia):', docRef.id);
+      return responder();
+    }
+
+    await docRef.create({
+      status: 'borrador',
+      fecha: new Date(),
+      paymentStatus: b.paymentStatus,
+      paymentMethod: textoOpcional(b.paymentMethod, 40) || 'other',
+      packageName: textoOpcional(b.packageName, 60),
+      companyType: textoOpcional(b.companyType, 20),
+      totalAmount: typeof b.totalAmount === 'number' ? b.totalAmount : null,
+      transferBankName: textoOpcional(b.transferBankName, 80),
+      paypalTransactionId: textoOpcional(b.paypalTransactionId, 120),
+      paymentReceipt: await pathToDownloadUrl(textoOpcional(b.paymentReceipt, 500) || ''),
+      email,
+      applicant: {
+        names: textoOpcional(applicant.names, 120) || '',
+        surnames: textoOpcional(applicant.surnames, 120) || '',
+        email,
+        phone: textoOpcional(applicant.phone, 40) || ''
+      }
+    });
+    console.log('💰 Pago registrado como borrador:', docRef.id, '|', b.paymentMethod, '|', email);
+    return responder();
+  } catch (e) {
+    if (e.code === 6 || e.code === 'already-exists') {
+      console.log('🔁 Carrera de registros de pago resuelta por idempotencia:', clave);
+      return res.json({ success: true, ventaId: clave, token: CUSTOMER_MAGIC_SECRET ? firmarTokenCliente(clave) : null });
+    }
+    console.error('❌ Error registrando pago:', e);
+    return res.status(500).json({ error: 'No se pudo registrar el pago' });
+  }
+});
+
+// ============================================
+// REANUDAR EXPEDIENTE — enlace del correo + PIN
+// ============================================
+app.post('/api/reanudar', async (req, res) => {
+  if (!CUSTOMER_MAGIC_SECRET) {
+    return res.status(503).json({ error: 'Reanudación no disponible' });
+  }
+  const { token, pin } = req.body || {};
+  const payload = verificarTokenCliente(token);
+  if (!payload || !esTexto(pin, 12)) {
+    return res.status(401).json({ error: 'Enlace inválido o vencido. Usa el enlace más reciente de tu correo.' });
+  }
+  try {
+    const docRef = db.collection('ventas').doc(String(payload.saleId));
+    const snap = await docRef.get();
+    if (!snap.exists) {
+      return res.status(404).json({ error: 'No encontramos este expediente.' });
+    }
+    const venta = snap.data();
+    if (venta.status !== 'borrador') {
+      // Ya fue enviado: no hay nada que reanudar; el panel es el lugar correcto.
+      return res.json({ completado: true });
+    }
+    const intentos = venta.reanudacionIntentos || 0;
+    if (intentos >= 10) {
+      return res.status(429).json({ error: 'Demasiados intentos de PIN. Escríbenos a ventas@formalizate.app para ayudarte.' });
+    }
+    if (!venta.pinHash) {
+      // onVentaCreate aún no procesó el borrador (tarda segundos tras el pago).
+      return res.status(409).json({ error: 'Tu acceso se está generando. Intenta de nuevo en un minuto.' });
+    }
+    if (hashPin(pin) !== venta.pinHash) {
+      await docRef.update({ reanudacionIntentos: intentos + 1 });
+      return res.status(401).json({ error: 'PIN incorrecto. Revisa el correo donde te lo enviamos.' });
+    }
+    if (intentos > 0) {
+      await docRef.update({ reanudacionIntentos: 0 });
+    }
+    return res.json({
+      success: true,
+      ventaId: docRef.id,
+      expediente: {
+        packageName: venta.packageName || null,
+        companyType: venta.companyType || null,
+        paymentStatus: venta.paymentStatus || null,
+        paymentMethod: venta.paymentMethod || null,
+        totalAmount: venta.totalAmount || null,
+        transferBankName: venta.transferBankName || null,
+        paymentReceipt: venta.paymentReceipt || null,
+        applicant: venta.applicant || null,
+        formulario: venta.formularioGuardado || null
+      }
+    });
+  } catch (e) {
+    console.error('❌ Error reanudando expediente:', e);
+    return res.status(500).json({ error: 'No se pudo reanudar. Intenta de nuevo.' });
+  }
+});
+
+// ============================================
+// AUTOGUARDADO DEL BORRADOR — avance del formulario
+// ============================================
+// Solo campos de texto (los archivos viven en Storage y el finalizar los
+// resuelve). El token del registro de pago (o del correo) autoriza.
+app.post('/api/guardar-borrador', async (req, res) => {
+  if (!CUSTOMER_MAGIC_SECRET) {
+    return res.status(503).json({ error: 'Autoguardado no disponible' });
+  }
+  const { token, formulario } = req.body || {};
+  const payload = verificarTokenCliente(token);
+  if (!payload) {
+    return res.status(401).json({ error: 'Token inválido' });
+  }
+  if (!formulario || typeof formulario !== 'object' || Array.isArray(formulario)) {
+    return res.status(400).json({ error: 'Formulario inválido' });
+  }
+  try {
+    if (JSON.stringify(formulario).length > 90_000) {
+      return res.status(413).json({ error: 'Borrador demasiado grande' });
+    }
+  } catch {
+    return res.status(400).json({ error: 'Formulario inválido' });
+  }
+  try {
+    const docRef = db.collection('ventas').doc(String(payload.saleId));
+    const snap = await docRef.get();
+    if (!snap.exists || snap.data().status !== 'borrador') {
+      // Expediente ya enviado (o inexistente): el autoguardado sobra.
+      return res.json({ success: true, omitido: true });
+    }
+    await docRef.update({
+      formularioGuardado: formulario,
+      fechaGuardadoBorrador: new Date()
+    });
+    return res.json({ success: true });
+  } catch (e) {
+    console.error('❌ Error autoguardando borrador:', e);
+    return res.status(500).json({ error: 'No se pudo autoguardar' });
   }
 });
 

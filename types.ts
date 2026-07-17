@@ -98,9 +98,16 @@ export interface FormData {
     packageName?: PackageName; 
     paymentMethod?: 'transfer' | 'card' | 'paypal' | 'other';
     paymentStatus?: 'unpaid' | 'pending_confirmation' | 'paid';
-    paymentReceipt?: File | null;
+    // File recién elegido, o string = RUTA en Storage (el comprobante se sube
+    // en el instante del pago; la ruta viaja al finalizar y el server la
+    // convierte en URL de descarga).
+    paymentReceipt?: File | string | null;
     transferBankName?: string;
     totalAmount?: number;
+    // Venta nacida al pagar: ID del doc 'borrador' en ventas (también clave de
+    // idempotencia del finalizar) y token firmado que autoriza el autoguardado.
+    ventaBorradorId?: string;
+    reanudacionToken?: string;
     hasLogo?: 'Sí' | 'No';
     logoFile?: File | null;
     fiscalClosing: string;

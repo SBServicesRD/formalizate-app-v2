@@ -1,16 +1,15 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { ChevronRight, Loader2 } from 'lucide-react';
-import { onAuthStateChanged, User, signOut } from 'firebase/auth';
+import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from './services/firebase';
 import StepProgressBar from './components/StepProgressBar';
 import StepTypeSelection from './components/StepTypeSelection';
 import StepA from './components/StepA';
 import PostPaymentWelcome from './components/PostPaymentWelcome';
-import SignupPostPaymentPage from './components/SignupPostPaymentPage';
 import PostPaymentForm from './components/PostPaymentForm';
 import SuccessPage from './components/SuccessPage';
-import DashboardPage from './components/DashboardPage';
-import LoginPage from './components/LoginPage';
+import ReanudarExpediente from './components/ReanudarExpediente';
+import { ExpedienteReanudado } from './services/documentService';
 import Header from './components/Header';
 import Footer from './components/Footer';
 import SummaryPage from './components/SummaryPage';
@@ -45,12 +44,11 @@ const resolvePlanFromUrl = (): PackageName | null => {
 };
 
 const PaymentPage = lazy(() => import('./components/PaymentPage'));
-const SecureDashboard = lazy(() => import('./components/SecureDashboard'));
 const TermsOfServicePage = lazy(() => import('./components/TermsOfServicePage'));
 const PrivacyPolicyPage = lazy(() => import('./components/PrivacyPolicyPage'));
 const RefundPolicyPage = lazy(() => import('./components/RefundPolicyPage'));
 
-type PageView = 'main' | 'privacy' | 'terms' | 'refund' | 'login';
+type PageView = 'main' | 'privacy' | 'terms' | 'refund';
 
 const LoadingFallback = () => (
     <div className="min-h-screen flex flex-col items-center justify-center bg-premium-bg">
@@ -141,9 +139,32 @@ const App: React.FC = () => {
         return null;
     };
 
-    const [currentStep, setCurrentStep] = useState<AppStep>(AppStep.StepTypeSelection);
-    const [highestStepReached, setHighestStepReached] = useState<AppStep>(AppStep.StepTypeSelection);
-    const [formData, setFormData] = useState<FormData>(initialFormState);
+    // RESTAURACIÓN al abrir: el guardado en localStorage existía pero nunca se
+    // leía — el cliente que recargaba la página volvía a empezar de cero
+    // aunque su avance estuviera guardado en su propio navegador. Ahora el
+    // wizard arranca donde el cliente iba (los archivos se re-adjuntan; los
+    // File no sobreviven en localStorage).
+    const estadoGuardado = loadSavedState(null);
+
+    const [currentStep, setCurrentStep] = useState<AppStep>(
+        estadoGuardado?.currentStep ?? AppStep.StepTypeSelection
+    );
+    const [highestStepReached, setHighestStepReached] = useState<AppStep>(
+        estadoGuardado?.highestStepReached ?? estadoGuardado?.currentStep ?? AppStep.StepTypeSelection
+    );
+    const [formData, setFormData] = useState<FormData>(
+        estadoGuardado?.formData ? { ...initialFormState, ...estadoGuardado.formData } : initialFormState
+    );
+
+    // Enlace de reanudación (?continuar=<token> del correo "pago registrado"):
+    // muestra la pantalla de PIN antes que cualquier otra cosa.
+    const [resumeToken, setResumeToken] = useState<string | null>(() => {
+        try {
+            return new URLSearchParams(window.location.search).get('continuar');
+        } catch {
+            return null;
+        }
+    });
 
     const [page, setPage] = useState<PageView>('main');
     const [user, setUser] = useState<User | null>(null);
@@ -179,26 +200,15 @@ const App: React.FC = () => {
     }, []);
 
     useEffect(() => {
-        if (isAuthenticated && page === 'login') {
-            setStep(AppStep.Dashboard);
-            setPage('main');
-        }
-    }, [isAuthenticated, page]);
-
-    useEffect(() => {
-        if (!authLoading && !isAuthenticated && currentStep === AppStep.Dashboard) {
-            setPage('login');
-            setStep(AppStep.StepTypeSelection);
-        }
-    }, [isAuthenticated, authLoading, currentStep]);
-
-    useEffect(() => {
         window.scrollTo(0, 0);
     }, [page]);
 
     useEffect(() => {
         if (!authLoading) {
-            const userId = user?.uid || null;
+            // Clave de invitado SIEMPRE: la sesión anónima (subidas) tiene uid
+            // pero no es una cuenta del cliente — guardar bajo ese uid partía
+            // el estado en dos claves y la restauración no lo encontraba.
+            const userId = user && !user.isAnonymous ? user.uid : null;
             const storageKey = getLocalStorageKey(userId);
             const stateToSave = {
                 formData,
@@ -286,32 +296,15 @@ const App: React.FC = () => {
         }
     };
 
+    // Sin cuenta ni contraseña: del pago se pasa directo al formulario. La
+    // llave de re-entrada es el enlace+PIN que llega por correo al pagar.
     const handlePaymentSuccess = () => {
-        setStep(AppStep.Login);
-    }
-
-    const handleStepLogin = () => {
         setStep(AppStep.PostPaymentWelcome);
-    }
-
-    const handleStandaloneLogin = () => {
-    }
-
-    const handleLogout = async () => {
-        try {
-            if (auth) {
-                await signOut(auth);
-            }
-            setStep(AppStep.StepTypeSelection);
-            setPage('main');
-        } catch (error) {
-            console.error('Error al cerrar sesión:', error);
-        }
     }
 
     const handleFinalSubmit = () => {
         try {
-            const userId = user?.uid || null;
+            const userId = user && !user.isAnonymous ? user.uid : null;
             const storageKey = getLocalStorageKey(userId);
             localStorage.removeItem(storageKey);
             setStep(AppStep.Success);
@@ -320,25 +313,44 @@ const App: React.FC = () => {
         }
     }
 
-    const goToDashboard = () => {
-        if (!isAuthenticated) {
-            setPage('login');
-            return;
-        }
-        setStep(AppStep.Dashboard);
+    // El panel real del cliente vive en dash.formalizate.app (acceso por
+    // enlace+PIN del correo); el panel interno con login murió con las cuentas.
+    const abrirPanel = () => {
+        window.location.href = 'https://dash.formalizate.app';
+    }
+
+    // Reanudación validada (enlace+PIN correctos): hidrata el formulario con
+    // el borrador del servidor y aterriza directo en el formulario post-pago.
+    const aplicarReanudacion = (datos: ExpedienteReanudado) => {
+        const exp = datos.expediente;
+        const restaurado = (exp?.formulario || {}) as Partial<FormData>;
+        setFormData(prev => ({
+            ...prev,
+            ...restaurado,
+            ...(exp?.applicant ? { applicant: { ...prev.applicant, ...exp.applicant } } : {}),
+            packageName: (exp?.packageName as FormData['packageName']) || prev.packageName,
+            companyType: (exp?.companyType as FormData['companyType']) || prev.companyType,
+            paymentStatus: (exp?.paymentStatus as FormData['paymentStatus']) || 'pending_confirmation',
+            paymentMethod: (exp?.paymentMethod as FormData['paymentMethod']) || prev.paymentMethod,
+            totalAmount: exp?.totalAmount ?? prev.totalAmount,
+            transferBankName: exp?.transferBankName ?? prev.transferBankName,
+            paymentReceipt: exp?.paymentReceipt ?? null,
+            logoFile: null,
+            onapiCertificate: null,
+            ventaBorradorId: datos.ventaId,
+            reanudacionToken: resumeToken || undefined
+        }));
+        setResumeToken(null);
+        try {
+            window.history.replaceState({}, '', window.location.pathname);
+        } catch { /* la URL con token no es crítica */ }
+        setStep(AppStep.PostPaymentForm);
     }
 
     // SECURITY: Payment Guard to prevent access bypass
     const isPaymentVerified = formData.paymentStatus === 'paid' || formData.paymentStatus === 'pending_confirmation';
 
     const renderFormStep = () => {
-        if (currentStep === AppStep.Dashboard) {
-            if (!isAuthenticated) {
-                setPage('login');
-                return null;
-            }
-        }
-
         if ([AppStep.Login, AppStep.PostPaymentWelcome, AppStep.PostPaymentForm, AppStep.Success, AppStep.Dashboard].includes(currentStep)) {
             if (!isPaymentVerified) {
                 return (
@@ -367,27 +379,18 @@ const App: React.FC = () => {
                      </Suspense>
                  );
             case AppStep.Login:
-                // Post-pago: SOLO signup, nunca login
-                return <SignupPostPaymentPage onSignupComplete={handleStepLogin} />;
+                // Paso muerto (era el signup post-pago): estados viejos
+                // restaurados desde localStorage caen a la bienvenida.
             case AppStep.PostPaymentWelcome:
-                return <PostPaymentWelcome onStartForm={goToNextStep} />;
+                return <PostPaymentWelcome onStartForm={() => setStep(AppStep.PostPaymentForm)} />;
             case AppStep.PostPaymentForm:
                 return <PostPaymentForm formData={formData} updateFormData={updateFormData} onComplete={handleFinalSubmit} onSubmittingChange={setIsSubmittingFinal} />;
             case AppStep.Success:
-                return <SuccessPage formData={formData} startOver={goToDashboard} />;
+                return <SuccessPage formData={formData} startOver={abrirPanel} />;
             case AppStep.Dashboard:
-                return (
-                    <Suspense fallback={<LoadingFallback />}>
-                        <SecureDashboard
-                            user={user}
-                            formData={formData}
-                            onExit={handleLogout}
-                            setStep={setStep}
-                        >
-                            <DashboardPage formData={formData} onExit={handleLogout} />
-                        </SecureDashboard>
-                    </Suspense>
-                );
+                // El panel interno murió con las cuentas: el panel real está
+                // en dash.formalizate.app (enlace+PIN por correo).
+                return <SuccessPage formData={formData} startOver={abrirPanel} />;
             default:
                 return <StepTypeSelection formData={formData} updateFormData={updateFormData} nextStep={goToNextStep} />;
         }
@@ -422,39 +425,15 @@ const App: React.FC = () => {
                         <RefundPolicyPage />
                     </Suspense>
                 );
-            case 'login':
-                if (isAuthenticated) {
-                    setStep(AppStep.Dashboard);
-                    setPage('main');
-                    return null;
-                }
-                return (
-                    <div className="min-h-screen flex flex-col items-center justify-center bg-premium-bg pt-20 pb-20">
-                        <LoginPage onLogin={handleStandaloneLogin} />
-                    </div>
-                );
             case 'main':
             default:
-                if (currentStep === AppStep.Dashboard) {
-                    if (!isAuthenticated) {
-                        setPage('login');
-                        return null;
-                    }
-                    if (!isPaymentVerified) {
-                        setStep(AppStep.Payment);
-                        return null;
-                    }
+                // Enlace de reanudación del correo: la pantalla de PIN manda
+                // sobre cualquier otro estado hasta validar (o descartar).
+                if (resumeToken) {
                     return (
-                        <Suspense fallback={<LoadingFallback />}>
-                            <SecureDashboard
-                                user={user}
-                                formData={formData}
-                                onExit={handleLogout}
-                                setStep={setStep}
-                            >
-                                <DashboardPage formData={formData} onExit={handleLogout} />
-                            </SecureDashboard>
-                        </Suspense>
+                        <div className="min-h-screen bg-premium-bg pt-20 pb-20">
+                            <ReanudarExpediente token={resumeToken} onSuccess={aplicarReanudacion} />
+                        </div>
                     );
                 }
                 return (

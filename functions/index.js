@@ -48,6 +48,7 @@ async function buildDownloadUrl(objectPath) {
 
 // URLs de los dashboards (configurables via env)
 const CUSTOMER_DASHBOARD_URL = process.env.CUSTOMER_DASHBOARD_URL || "https://dash.formalizate.app";
+const WIZARD_URL = process.env.WIZARD_URL || "https://app.formalizate.app";
 const INVESTOR_DASHBOARD_URL = process.env.INVESTOR_DASHBOARD_URL || "https://investors.formalizate.app";
 
 // ── WhatsApp (Meta Cloud API) ────────────────────────────────────────────────
@@ -296,6 +297,56 @@ exports.onVentaCreate = onDocumentCreated(
     const data = snap.data();
     const firestoreId = event.params.ventaId;
 
+    // ── VENTA NACIDA AL PAGAR (borrador) ────────────────────────────────────
+    // El wizard registra la venta en el instante del pago; el formulario viene
+    // después. Aquí se le da su orderId y su llave de reanudación (PIN + token
+    // firmado hacia el wizard, mismo mecanismo del dashboard) y se le envía el
+    // correo "continúa tu expediente". El correo transaccional normal saldrá
+    // cuando complete el formulario (onExpedienteCompletado).
+    if (data.status === "borrador") {
+      try {
+        const orderId = await generateUniqueOrderId();
+        const customerSecret = process.env.CUSTOMER_MAGIC_SECRET;
+        const updates = { orderId, firestoreId, fechaCreacion: FieldValue.serverTimestamp() };
+        let resumePin = null;
+        let resumeUrl = WIZARD_URL;
+
+        if (customerSecret) {
+          resumePin = generatePin();
+          updates.pinHash = hashPin(resumePin);
+          const resumeToken = signToken(
+            { saleId: firestoreId, role: "customer", issuedAt: Math.floor(Date.now() / 1000) },
+            customerSecret
+          );
+          resumeUrl = `${WIZARD_URL}/?continuar=${resumeToken}`;
+        } else {
+          console.warn("CUSTOMER_MAGIC_SECRET no configurada — borrador sin PIN de reanudación");
+        }
+
+        await snap.ref.update(updates);
+
+        const email = data.email || data.applicant?.email;
+        let nombre = "Cliente";
+        if (data.applicant?.names) {
+          nombre = `${data.applicant.names} ${data.applicant.surnames || ""}`.trim();
+        }
+        const plan = data.packageName || "Servicio";
+        const monto = getPrecio(plan, data.totalAmount);
+
+        if (email && resumePin) {
+          const template = getTemplate("continua_expediente", {
+            nombre, plan, monto, orderId, resumeUrl, dashboardPin: resumePin,
+          });
+          if (template) {
+            await sendEmail({ to: email, subject: template.subject, html: template.html });
+          }
+        }
+      } catch (error) {
+        console.error("Error en onVentaCreate (borrador):", error);
+      }
+      return;
+    }
+
     try {
       // --- Generar Order ID ---
       const orderId = await generateUniqueOrderId();
@@ -361,6 +412,73 @@ exports.onVentaCreate = onDocumentCreated(
       }
     } catch (error) {
       console.error("Error en onVentaCreate:", error);
+    }
+  }
+);
+
+// ============================================================
+// FIRESTORE TRIGGER: BORRADOR COMPLETADO → EXPEDIENTE ENVIADO
+// (función AISLADA; no toca onVentaCreate ni las demás)
+// ============================================================
+// El cliente terminó el formulario de una venta nacida al pagar. Se regenera
+// el PIN (el de reanudación ya cumplió su ciclo; este es el del panel) y se
+// envía el correo transaccional que en el flujo clásico enviaba onVentaCreate.
+// onVentaUpdate no interfiere: 'pendiente' no coincide con ninguna de sus ramas.
+exports.onExpedienteCompletado = onDocumentUpdated(
+  {
+    document: "ventas/{ventaId}",
+    database: "formalizate-app-prod",
+    region: "us-central1",
+  },
+  async (event) => {
+    try {
+      const before = event.data?.before?.data() || {};
+      const after = event.data?.after?.data() || {};
+      if (before.status !== "borrador" || after.status === "borrador") return;
+
+      const firestoreId = after.firestoreId || event.params.ventaId;
+      const customerSecret = process.env.CUSTOMER_MAGIC_SECRET;
+      let dashboardPin = null;
+      let dashboardLink = null;
+
+      if (customerSecret) {
+        dashboardPin = generatePin();
+        await event.data.after.ref.update({ pinHash: hashPin(dashboardPin) });
+        const dashboardToken = signToken(
+          { saleId: firestoreId, role: "customer", issuedAt: Math.floor(Date.now() / 1000) },
+          customerSecret
+        );
+        dashboardLink = `${CUSTOMER_DASHBOARD_URL}/?token=${dashboardToken}`;
+      }
+
+      const email = after.email || after.userEmail || after.applicant?.email;
+      let nombre = "Cliente";
+      if (after.applicant?.names) {
+        nombre = `${after.applicant.names} ${after.applicant.surnames || ""}`.trim();
+      } else if (after.nombre) {
+        nombre = after.nombre;
+      }
+      const plan = after.plan || after.packageName || "Servicio";
+      const monto = getPrecio(plan, after.monto || after.totalAmount);
+      const metodoRaw = (after.metodoPago || after.paymentMethod || "").toLowerCase();
+      const templateType =
+        metodoRaw.includes("paypal") || metodoRaw.includes("card") || after.paymentStatus === "paid"
+          ? "pago_exitoso"
+          : "orden_recibida";
+
+      if (email) {
+        const template = getTemplate(templateType, {
+          nombre, plan, monto,
+          orderId: after.orderId || firestoreId,
+          dashboardUrl: dashboardLink,
+          dashboardPin,
+        });
+        if (template) {
+          await sendEmail({ to: email, subject: template.subject, html: template.html });
+        }
+      }
+    } catch (error) {
+      console.error("Error en onExpedienteCompletado:", error);
     }
   }
 );

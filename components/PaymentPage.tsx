@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { FormData } from '../types';
-import { PACKAGES, ALLOWED_FILE_TYPES, ORPHAN_SALE_KEY } from '../constants';
+import { PACKAGES, ALLOWED_FILE_TYPES } from '../constants';
+import { subirComprobante, registrarPagoComoBorrador } from '../services/documentService';
 import { calculateICCTax, formatCurrency } from '../utils/calculations';
 import { Check, CheckCircle, Landmark, CreditCard, ChevronDown, X, Building, Upload, Trash2, Loader2, ChevronLeft } from 'lucide-react';
 import { PayPalScriptProvider, PayPalButtons } from '@paypal/react-paypal-js';
@@ -141,15 +142,33 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onP
     const handlePayPalApprove = async (data: any, actions: any) => {
         try {
             const details = await actions.order.capture();
-            
-            updateFormData({ 
-                paymentMethod: 'paypal', 
-                paymentStatus: 'paid',
-                totalAmount: totalAmount
-            });
 
-            // 🔗 VENTA HUÉRFANA: Guardar ID de transacción PayPal para vincular después del login
-            localStorage.setItem(ORPHAN_SALE_KEY, details.id);
+            const datosPago = {
+                paymentMethod: 'paypal' as const,
+                paymentStatus: 'paid' as const,
+                totalAmount: totalAmount
+            };
+            updateFormData(datosPago);
+
+            // La venta NACE aquí (borrador con el pago capturado): aunque el
+            // cliente nunca termine el formulario, el dinero queda registrado
+            // y le llega su enlace+PIN para continuar. Si el registro tarda,
+            // no retenemos al cliente más de unos segundos: el registro sigue
+            // en segundo plano y el estado se anota cuando llegue (si fallara
+            // del todo, el flujo clásico crea la venta al finalizar).
+            const registro = registrarPagoComoBorrador({
+                ...formData,
+                ...datosPago,
+                paypalTransactionId: details.id
+            } as typeof formData).then(borrador => {
+                if (borrador) {
+                    updateFormData({
+                        ventaBorradorId: borrador.ventaId,
+                        reanudacionToken: borrador.token || undefined
+                    });
+                }
+            });
+            await Promise.race([registro, new Promise(r => setTimeout(r, 8_000))]);
 
             onPaymentSuccess();
         } catch {
@@ -262,28 +281,46 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onP
 
         setIsVerifying(true);
         setUploadError(null);
-        
-        // --- SIMPLIFIED FLOW WITHOUT AI ---
-        // Just simulate a brief network request/upload
-        setTimeout(() => {
-            updateFormData({ 
-                paymentMethod: 'transfer',
-                paymentStatus: 'pending_confirmation',
-                paymentReceipt: voucherFile, // 🔥 CRÍTICO: Persistir el archivo en formData
-                transferBankName: selectedBankIndex !== null 
-                    ? bankAccounts[selectedBankIndex].name 
+
+        try {
+            // El comprobante sube a Storage AHORA, con la tubería resiliente
+            // (estancamiento/tope/reintentos): queda a salvo aunque el cliente
+            // nunca llegue a finalizar el formulario. En formData viaja la RUTA
+            // (string) — el finalizar la pasa tal cual y el server la resuelve.
+            const rutaComprobante = await subirComprobante(voucherFile);
+
+            const datosPago = {
+                paymentMethod: 'transfer' as const,
+                paymentStatus: 'pending_confirmation' as const,
+                paymentReceipt: rutaComprobante,
+                transferBankName: selectedBankIndex !== null
+                    ? bankAccounts[selectedBankIndex].name
                     : undefined,
                 totalAmount: totalAmount
+            };
+
+            // La venta NACE aquí (borrador). Si el registro fallara tras los
+            // reintentos, el cliente continúa igual: el flujo clásico crea la
+            // venta al finalizar (el comprobante ya está a salvo en Storage).
+            const borrador = await registrarPagoComoBorrador({ ...formData, ...datosPago });
+
+            updateFormData({
+                ...datosPago,
+                ...(borrador ? {
+                    ventaBorradorId: borrador.ventaId,
+                    reanudacionToken: borrador.token || undefined
+                } : {})
             });
 
-            // 🔗 VENTA HUÉRFANA: Generar ID temporal único para transferencias
-            const tempSaleId = `transfer_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
-            localStorage.setItem(ORPHAN_SALE_KEY, tempSaleId);
-
-            onPaymentSuccess();
             setShowBankModal(false);
+            onPaymentSuccess();
+        } catch (e) {
+            setUploadError(e instanceof Error
+                ? `${e.message} Tu dinero está a salvo: no necesitas transferir de nuevo, solo re-subir el comprobante.`
+                : 'No se pudo subir el comprobante. Revisa tu internet e intenta de nuevo.');
+        } finally {
             setIsVerifying(false);
-        }, 1500);
+        }
     };
 
     const CheckIcon = () => (

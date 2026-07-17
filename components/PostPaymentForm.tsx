@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { FormData } from '../types';
 import { NCF_OPTIONS, FISCAL_CLOSING_DATE, ALLOWED_FILE_TYPES } from '../constants';
 import { validateRequired, formatPhoneNumber, validateEmail, formatDateMask, validateDate, validatePhoneNumber, sanitizeInput } from '../utils/validation';
-import { saveFullApplication, confirmarEnvioExitoso } from '../services/documentService';
+import { saveFullApplication, confirmarEnvioExitoso, guardarBorrador, extraerCamposTexto } from '../services/documentService';
 import {
     AlertCircle,
     AlertTriangle,
@@ -86,6 +86,18 @@ const PostPaymentForm: React.FC<PostPaymentFormProps> = ({ formData, updateFormD
     const [errors, setErrors] = useState<Record<string, string | Record<string,string>>>({});
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [submissionError, setSubmissionError] = useState<string | null>(null);
+
+    // AUTOGUARDADO al borrador del servidor (solo texto, debounce de 4s tras
+    // el último cambio): si el cliente cambia de dispositivo o pierde el
+    // navegador, el enlace+PIN de su correo lo devuelve con su avance. Un
+    // fallo aquí es silencioso — jamás interrumpe al que está escribiendo.
+    useEffect(() => {
+        if (!formData.ventaBorradorId || !formData.reanudacionToken || isSubmitting) return;
+        const timer = setTimeout(() => {
+            guardarBorrador(formData.reanudacionToken!, extraerCamposTexto(formData));
+        }, 4_000);
+        return () => clearTimeout(timer);
+    }, [formData, isSubmitting]);
 
     // Propaga el estado de envío al padre (App.tsx) para que pueda activar
     // protecciones contra navegación accidental durante el await del fetch.

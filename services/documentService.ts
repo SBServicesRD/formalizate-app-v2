@@ -155,6 +155,130 @@ const resetEstadoEnvio = (): void => {
 // responda "duplicated" en vez de crear una segunda venta.
 export const confirmarEnvioExitoso = (): void => resetEstadoEnvio();
 
+// ============================================================
+// VENTA NACIDA AL PAGAR — registro del borrador y reanudación
+// ============================================================
+
+const postJson = async (url: string, body: unknown, timeoutMs: number): Promise<Response> => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        return await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+            signal: controller.signal
+        });
+    } finally {
+        clearTimeout(timer);
+    }
+};
+
+// Sube el comprobante de transferencia EN EL INSTANTE del pago, con la misma
+// tubería resiliente del envío final (estancamiento, tope, reintentos). Así el
+// comprobante queda a salvo en Storage aunque el cliente nunca llegue a
+// finalizar el formulario.
+export const subirComprobante = async (file: File): Promise<string> => {
+    await ensureUploadAuth();
+    return uploadFileAndGetPath(file, 'comprobantes');
+};
+
+// Registra la venta como BORRADOR en el momento del pago. Idempotente: la
+// draftKey generada aquí es el ID del doc; reintentar jamás duplica. Devuelve
+// null solo si el servidor no respondió tras los reintentos (el flujo sigue:
+// el expediente se creará al finalizar, como en el flujo clásico).
+export const registrarPagoComoBorrador = async (
+    data: AppFormData
+): Promise<{ ventaId: string; token: string | null } | null> => {
+    const draftKey = nuevaClaveIdempotencia();
+    const body = {
+        draftKey,
+        applicant: data.applicant,
+        packageName: data.packageName,
+        companyType: data.companyType,
+        paymentMethod: data.paymentMethod,
+        paymentStatus: data.paymentStatus,
+        totalAmount: data.totalAmount,
+        transferBankName: data.transferBankName || null,
+        paypalTransactionId: (data as unknown as Record<string, unknown>).paypalTransactionId || null,
+        paymentReceipt: typeof data.paymentReceipt === 'string' ? data.paymentReceipt : null
+    };
+    for (let intento = 1; intento <= 3; intento++) {
+        try {
+            const res = await postJson('/api/registrar-pago', body, 15_000);
+            if (res.ok) {
+                const r = await res.json();
+                return { ventaId: r.ventaId, token: r.token || null };
+            }
+            console.error(`registrar-pago respondió HTTP ${res.status} (intento ${intento}/3)`);
+        } catch (e) {
+            console.error(`registrar-pago falló (intento ${intento}/3):`, e);
+        }
+        if (intento < 3) await new Promise(r => setTimeout(r, 1_000 * intento));
+    }
+    return null;
+};
+
+export interface ExpedienteReanudado {
+    ventaId: string;
+    completado?: boolean;
+    expediente?: {
+        packageName: string | null;
+        companyType: string | null;
+        paymentStatus: string | null;
+        paymentMethod: string | null;
+        totalAmount: number | null;
+        transferBankName: string | null;
+        paymentReceipt: string | null;
+        applicant: AppFormData['applicant'] | null;
+        formulario: Record<string, unknown> | null;
+    };
+}
+
+// Valida enlace (token del correo) + PIN contra el servidor y devuelve el
+// borrador para retomarlo. Lanza Error con mensaje mostrable al cliente.
+export const reanudarExpediente = async (token: string, pin: string): Promise<ExpedienteReanudado> => {
+    let res: Response;
+    try {
+        res = await postJson('/api/reanudar', { token, pin }, 20_000);
+    } catch {
+        throw new Error('No pudimos conectar. Revisa tu internet e intenta de nuevo.');
+    }
+    const cuerpo = await res.json().catch(() => ({}));
+    if (!res.ok) {
+        throw new Error(cuerpo.error || 'No se pudo reanudar el expediente.');
+    }
+    return cuerpo as ExpedienteReanudado;
+};
+
+// Autoguardado del avance (solo texto). Silencioso a propósito: un fallo de
+// autosave jamás debe interrumpir al cliente que está llenando el formulario.
+export const guardarBorrador = async (token: string, formulario: Record<string, unknown>): Promise<void> => {
+    try {
+        await postJson('/api/guardar-borrador', { token, formulario }, 15_000);
+    } catch {
+        // silencioso — el próximo autosave lo reintenta
+    }
+};
+
+// Versión "solo texto" del formData para autoguardar: los File no viajan por
+// JSON (los archivos se re-adjuntan al reanudar en otro dispositivo, igual que
+// hace la restauración local de siempre).
+export const extraerCamposTexto = (data: AppFormData): Record<string, unknown> => {
+    const limpiarPersona = <T extends { idFront?: unknown; idBack?: unknown }>(p: T) =>
+        ({ ...p, idFront: null, idBack: null });
+    const out: Record<string, unknown> = {
+        ...data,
+        logoFile: null,
+        onapiCertificate: null,
+        paymentReceipt: typeof data.paymentReceipt === 'string' ? data.paymentReceipt : null,
+        partners: (data.partners || []).map(limpiarPersona),
+        titulars: (data.titulars || []).map(limpiarPersona)
+    };
+    delete out.reanudacionToken; // el token no se persiste dentro de la venta
+    return out;
+};
+
 const resolveUpload = async (
     fileInput: Uploadable,
     folder: string,
@@ -268,7 +392,12 @@ export const saveFullApplication = async (data: AppFormData): Promise<any> => {
         }
         const carpetaIds = carpetaIdsEnCurso;
 
-        if (!claveIdempotenciaEnCurso) {
+        // Venta nacida al pagar: la clave ES el ID del borrador, así el
+        // finalizar COMPLETA ese doc en vez de crear otro. Sin borrador
+        // (fallo al registrar el pago, flujo legacy) se genera una clave.
+        if (data.ventaBorradorId) {
+            claveIdempotenciaEnCurso = data.ventaBorradorId;
+        } else if (!claveIdempotenciaEnCurso) {
             claveIdempotenciaEnCurso = nuevaClaveIdempotencia();
         }
 
@@ -301,6 +430,10 @@ export const saveFullApplication = async (data: AppFormData): Promise<any> => {
         const payloadRecord = payload as Record<string, unknown>;
         delete payloadRecord.identityDocFront;
         delete payloadRecord.identityDocBack;
+        // Estado de reanudación: es transporte del cliente, no dato de la venta
+        // (el ID del borrador ya viaja como idempotencyKey).
+        delete payloadRecord.ventaBorradorId;
+        delete payloadRecord.reanudacionToken;
 
         // POST con timeout: sin esto, un fetch que nunca responde dejaba el
         // envío colgado para siempre. Si aborta, reintentar es seguro: la clave
