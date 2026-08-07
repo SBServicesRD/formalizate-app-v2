@@ -21,7 +21,7 @@ setGlobalOptions({
   region: "us-central1",
   // Secretos desde Secret Manager (ya NO viven en functions/.env):
   // ZOHO_PASSWORD es la app password de GMAIL (nombre histórico engañoso).
-  secrets: ["ZOHO_PASSWORD", "CUSTOMER_MAGIC_SECRET", "INVESTOR_MAGIC_SECRET", "ADMIN_MAGIC_SECRET", "NOTION_API_KEY", "VENTAS_SMTP_PASSWORD", "WHATSAPP_TOKEN", "GEMINI_API_KEY", "GA4_SA_KEY"],
+  secrets: ["ZOHO_PASSWORD", "CUSTOMER_MAGIC_SECRET", "INVESTOR_MAGIC_SECRET", "ADMIN_MAGIC_SECRET", "NOTION_API_KEY", "VENTAS_SMTP_PASSWORD", "WHATSAPP_TOKEN", "GEMINI_API_KEY", "GA4_SA_KEY", "GA4_API_SECRET"],
 });
 
 const app = initializeApp();
@@ -50,6 +50,68 @@ async function buildDownloadUrl(objectPath) {
 const CUSTOMER_DASHBOARD_URL = process.env.CUSTOMER_DASHBOARD_URL || "https://dash.formalizate.app";
 const WIZARD_URL = process.env.WIZARD_URL || "https://app.formalizate.app";
 const INVESTOR_DASHBOARD_URL = process.env.INVESTOR_DASHBOARD_URL || "https://investors.formalizate.app";
+const GA4_MEASUREMENT_ID = "G-H5NN987LKF";
+
+// Envía compras confirmadas por transferencia sin depender de que el cliente
+// mantenga abierta la página. Si falta el secreto, no bloquea el cambio de pago:
+// queda registrado en logs para completar la configuración antes del deploy.
+async function emitirPurchaseGA4(ventaId, venta) {
+  const apiSecret = process.env.GA4_API_SECRET;
+  if (!apiSecret) {
+    console.warn("GA4 purchase omitido: GA4_API_SECRET no configurado", ventaId);
+    return false;
+  }
+
+  const value = Number(venta.totalAmount || venta.monto || 0);
+  if (!Number.isFinite(value) || value <= 0) {
+    console.warn("GA4 purchase omitido: monto inválido", ventaId, venta.totalAmount);
+    return false;
+  }
+
+  const attribution = venta.marketingAttribution || {};
+  const firstTouch = attribution.firstTouch || {};
+  const sessionId = Number(attribution.gaSessionId);
+  const params = {
+    transaction_id: String(ventaId),
+    value,
+    currency: "DOP",
+    items: [{
+      item_id: String(venta.packageName || venta.plan || "servicio"),
+      item_name: String(venta.packageName || venta.plan || "Servicio"),
+      price: value,
+      quantity: 1,
+    }],
+    engagement_time_msec: 1,
+    attribution_source: firstTouch.source || "",
+    attribution_medium: firstTouch.medium || "",
+    attribution_campaign: firstTouch.campaign || "",
+    attribution_gclid: firstTouch.gclid || "",
+  };
+  if (Number.isSafeInteger(sessionId) && sessionId > 0) params.session_id = sessionId;
+
+  try {
+    const response = await fetch(
+      `https://www.google-analytics.com/mp/collect?measurement_id=${GA4_MEASUREMENT_ID}&api_secret=${encodeURIComponent(apiSecret)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          client_id: attribution.gaClientId || `server.${ventaId}`,
+          events: [{ name: "purchase", params }],
+        }),
+      }
+    );
+    if (!response.ok) {
+      console.error("GA4 purchase falló", ventaId, response.status, (await response.text()).slice(0, 300));
+      return false;
+    }
+    console.log("GA4 purchase enviado", ventaId);
+    return true;
+  } catch (error) {
+    console.error("GA4 purchase falló", ventaId, error.message);
+    return false;
+  }
+}
 
 // ── WhatsApp (Meta Cloud API) ────────────────────────────────────────────────
 // Enviamos plantillas aprobadas por la WhatsApp Cloud API de Meta (el mismo canal
@@ -551,11 +613,20 @@ exports.onVentaPagoConfirmado = onDocumentUpdated(
       const monto = after.monto || after.totalAmount || "";
       const orderId = after.orderId || event.params.ventaId;
       const status = after.status || "";
-      await fetch(NOTION_BRIDGE_WEBHOOK, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, phone, nombre, empresa, plan, monto, orderId, status, paymentStatus: "paid", event: "pagado" }),
-      });
+      const metodo = String(after.metodoPago || after.paymentMethod || "").toLowerCase();
+      const esPagoManual = !metodo.includes("paypal") && !metodo.includes("card");
+      const resultados = await Promise.allSettled([
+        fetch(NOTION_BRIDGE_WEBHOOK, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, phone, nombre, empresa, plan, monto, orderId, status, paymentStatus: "paid", event: "pagado" }),
+        }),
+        esPagoManual && !after.ga4PurchaseSentAt ? emitirPurchaseGA4(event.params.ventaId, after) : Promise.resolve(),
+      ]);
+      const ga4Result = resultados[1];
+      if (esPagoManual && ga4Result.status === "fulfilled" && ga4Result.value) {
+        await event.data.after.ref.update({ ga4PurchaseSentAt: FieldValue.serverTimestamp() });
+      }
     } catch (error) {
       console.error("Puente Notion (onVentaPagoConfirmado) falló:", error);
     }

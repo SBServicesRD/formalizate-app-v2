@@ -5,6 +5,10 @@ node_modules/
 .git/
 .gitignore
 .env 
+.env.*
 env.yaml
 build.env.yaml
 runtime.env.yaml
+serviceAccountKey.json
+*.key
+*.pem

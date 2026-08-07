@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { FormData } from '../types';
 import { PACKAGES, ALLOWED_FILE_TYPES } from '../constants';
 import { subirComprobante, registrarPagoComoBorrador } from '../services/documentService';
+import { captureMarketingAttribution } from '../services/analytics';
 import { calculateICCTax, formatCurrency } from '../utils/calculations';
 import { Check, CheckCircle, Landmark, CreditCard, ChevronDown, X, Building, Upload, Trash2, Loader2, ChevronLeft } from 'lucide-react';
 import { PayPalScriptProvider, PayPalButtons } from '@paypal/react-paypal-js';
@@ -52,6 +53,14 @@ const bankAccounts = [
     }
 ];
 
+const trackEvent = (eventName: string, params: Record<string, unknown> = {}) => {
+    if (typeof window === 'undefined') return;
+    const gtag = (window as Window & { gtag?: (...args: unknown[]) => void }).gtag;
+    if (typeof gtag === 'function') {
+        gtag('event', eventName, params);
+    }
+};
+
 const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onPaymentSuccess, prevStep, onAlreadyPaid }) => {
     // SECURITY: Bloquear el form de pago si el usuario ya pagó (previene doble cobro
     // si entra aquí por navegación inversa via breadcrumb, deep link o reload con state).
@@ -81,13 +90,13 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onP
     
     // Estado para expandir lista de beneficios
     const [showAllFeatures, setShowAllFeatures] = useState(true);
-    
+
     // Estado para la tasa de cambio dinámica
     const [exchangeRate, setExchangeRate] = useState<number>(0);
     const [isLoadingRate, setIsLoadingRate] = useState<boolean>(true);
 
     const SAFE_FALLBACK_RATE = 60.00; // Critical Fallback to prevent Div by Zero
-
+    
     // Obtener detalles del paquete seleccionado
     const selectedPackageName = formData.packageName || 'Essential 360';
     const packageDetails = PACKAGES[selectedPackageName];
@@ -104,16 +113,16 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onP
                 // Usamos una API pública confiable para obtener la tasa real
                 const response = await fetch('https://open.er-api.com/v6/latest/USD');
                 const data = await response.json();
-                
+
                 if (data && data.rates && data.rates.DOP) {
-                    const rate = data.rates.DOP; 
+                    const rate = data.rates.DOP;
                     // Validate rate is sane (e.g. not 0)
                     setExchangeRate(rate > 0 ? rate : SAFE_FALLBACK_RATE);
                 } else {
                     throw new Error("No rate data");
                 }
             } catch {
-                setExchangeRate(SAFE_FALLBACK_RATE); 
+                setExchangeRate(SAFE_FALLBACK_RATE);
             } finally {
                 setIsLoadingRate(false);
             }
@@ -142,13 +151,26 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onP
     const handlePayPalApprove = async (data: any, actions: any) => {
         try {
             const details = await actions.order.capture();
+            const transactionId = details.id || data.orderID;
+
+            trackEvent('purchase', {
+                transaction_id: transactionId,
+                value: totalAmount,
+                currency: 'DOP',
+                payment_method: 'paypal',
+                items: [{ item_name: selectedPackageName, price: totalAmount, quantity: 1 }]
+            });
 
             const datosPago = {
                 paymentMethod: 'paypal' as const,
                 paymentStatus: 'paid' as const,
                 totalAmount: totalAmount
             };
-            updateFormData(datosPago);
+            const marketingAttribution = formData.marketingAttribution || await captureMarketingAttribution();
+            updateFormData({
+                ...datosPago,
+                ...(marketingAttribution ? { marketingAttribution } : {})
+            });
 
             // La venta NACE aquí (borrador con el pago capturado): aunque el
             // cliente nunca termine el formulario, el dinero queda registrado
@@ -159,6 +181,7 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onP
             const registro = registrarPagoComoBorrador({
                 ...formData,
                 ...datosPago,
+                marketingAttribution,
                 paypalTransactionId: details.id
             } as typeof formData).then(borrador => {
                 if (borrador) {
@@ -179,7 +202,7 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onP
     const handlePayPalError = (err: any) => {
         // Robust Error Extraction
         let message = "";
-        
+
         try {
             if (err instanceof Error) {
                 message = err.message;
@@ -218,7 +241,6 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onP
 
     const handlePaymentClick = () => {
         if (!termsAccepted) return;
-        
         if (paymentMethod === 'transfer') {
             setShowBankModal(true);
         }
@@ -302,10 +324,22 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onP
             // La venta NACE aquí (borrador). Si el registro fallara tras los
             // reintentos, el cliente continúa igual: el flujo clásico crea la
             // venta al finalizar (el comprobante ya está a salvo en Storage).
-            const borrador = await registrarPagoComoBorrador({ ...formData, ...datosPago });
+            const marketingAttribution = formData.marketingAttribution || await captureMarketingAttribution();
+            const borrador = await registrarPagoComoBorrador({ ...formData, ...datosPago, marketingAttribution });
+
+            if (borrador) {
+                trackEvent('payment_submitted', {
+                    transaction_id: borrador.ventaId,
+                    value: totalAmount,
+                    currency: 'DOP',
+                    payment_method: 'transfer',
+                    items: [{ item_name: selectedPackageName, price: totalAmount, quantity: 1 }]
+                });
+            }
 
             updateFormData({
                 ...datosPago,
+                ...(marketingAttribution ? { marketingAttribution } : {}),
                 ...(borrador ? {
                     ventaBorradorId: borrador.ventaId,
                     reanudacionToken: borrador.token || undefined
@@ -411,7 +445,7 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onP
             <div className="max-w-lg mx-auto mb-8">
                 <h3 className="text-xs font-bold text-text-tertiary uppercase tracking-widest mb-4 text-left">Selecciona Método de Pago</h3>
                 <div className="grid grid-cols-2 gap-4">
-                    <button 
+                    <button
                         onClick={() => { setPaymentMethod('transfer'); setTermsAccepted(false); setError(''); }}
                         className={`relative p-4 rounded-xl border-2 flex flex-col items-center justify-center transition-all ${paymentMethod === 'transfer' ? 'border-sbs-blue bg-blue-50/50 shadow-md' : 'border-gray-200 bg-white hover:border-gray-300'}`}
                     >
@@ -424,7 +458,7 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onP
                         )}
                     </button>
 
-                    <button 
+                    <button
                         onClick={() => { setPaymentMethod('paypal'); setTermsAccepted(false); setError(''); }}
                         className={`relative p-4 rounded-xl border-2 flex flex-col items-center justify-center transition-all ${paymentMethod === 'paypal' ? 'border-[#003087] bg-blue-50/50 shadow-md' : 'border-gray-200 bg-white hover:border-gray-300'}`}
                     >
@@ -475,7 +509,6 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onP
             </div>
 
             <div className="flex flex-col items-center gap-6">
-                
                 {paymentMethod === 'paypal' ? (
                     <div className="w-full max-w-[300px] min-h-[150px]">
                         {!termsAccepted ? (
@@ -489,7 +522,7 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onP
                             </div>
                         ) : (
                              <>
-                                <PayPalScriptProvider options={{ 
+                                <PayPalScriptProvider options={{
                                     clientId: PAYPAL_CLIENT_ID,
                                     currency: "USD",
                                     intent: "capture"
@@ -520,8 +553,8 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onP
                         onClick={handlePaymentClick}
                         disabled={isPaying || !termsAccepted}
                         className={`font-bold py-6 px-20 rounded-full text-xl transition-all duration-300 transform shadow-xl flex items-center justify-center min-w-[300px]
-                            ${termsAccepted 
-                                ? 'bg-red-gradient text-white hover:shadow-glow-red hover:-translate-y-0.5 cursor-pointer' 
+                            ${termsAccepted
+                                ? 'bg-red-gradient text-white hover:shadow-glow-red hover:-translate-y-0.5 cursor-pointer'
                                 : 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none'
                             }
                             ${isPaying ? 'opacity-70 cursor-wait' : ''}

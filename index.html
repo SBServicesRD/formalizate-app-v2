@@ -41,7 +41,12 @@
       function gtag(){dataLayer.push(arguments);}
       gtag('js', new Date());
 
-      gtag('config', 'G-H5NN987LKF');
+      window.gtag = gtag;
+      gtag('config', 'G-H5NN987LKF', {
+        linker: {
+          domains: ['formalizate.app', 'www.formalizate.app', 'blog.formalizate.app', 'app.formalizate.app']
+        }
+      });
       // Tag de Google Ads: sin este config, el evento de conversión de compra
       // (PostPaymentForm, send_to AW-17948166548/...) se descarta y Ads reporta 0.
       gtag('config', 'AW-17948166548');

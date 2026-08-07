@@ -1,4 +1,4 @@
-import React, { useState, useEffect, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { ChevronRight, Loader2 } from 'lucide-react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from './services/firebase';
@@ -15,6 +15,8 @@ import Footer from './components/Footer';
 import SummaryPage from './components/SummaryPage';
 import { AppStep, FormData } from './types';
 import { MANAGEMENT_DURATION, FISCAL_CLOSING_DATE, PackageName, PACKAGES } from './constants';
+import { captureMarketingAttribution } from './services/analytics';
+import { calculateICCTax } from './utils/calculations';
 import StepB from './components/StepB';
 import StepC from './components/StepC';
 
@@ -41,6 +43,14 @@ const resolvePlanFromUrl = (): PackageName | null => {
         return null;
     }
     return null;
+};
+
+const trackEvent = (eventName: string, params: Record<string, unknown> = {}) => {
+    if (typeof window === 'undefined') return;
+    const gtag = (window as Window & { gtag?: (...args: unknown[]) => void }).gtag;
+    if (typeof gtag === 'function') {
+        gtag('event', eventName, params);
+    }
 };
 
 const PaymentPage = lazy(() => import('./components/PaymentPage'));
@@ -172,6 +182,53 @@ const App: React.FC = () => {
     // Activo mientras PostPaymentForm está enviando — protege contra cierre/refresh
     // que podría perder la confirmación del expediente ya en vuelo.
     const [isSubmittingFinal, setIsSubmittingFinal] = useState(false);
+    const trackedCheckoutPlans = useRef(new Set<string>());
+
+    useEffect(() => {
+        // Reanudación por correo (?continuar=): la venta ya tiene su atribución
+        // del momento del pago. Capturar aquí reescribiría lastTouch con el
+        // referrer del cliente de email (mail.google.com, Outlook, etc.).
+        if (resumeToken) return;
+
+        let active = true;
+        captureMarketingAttribution().then((attribution) => {
+            if (!active || !attribution) return;
+            setFormData((prev) => ({
+                ...prev,
+                marketingAttribution: {
+                    ...prev.marketingAttribution,
+                    ...attribution,
+                    firstTouch: prev.marketingAttribution?.firstTouch || attribution.firstTouch,
+                    lastTouch: attribution.lastTouch,
+                },
+            }));
+            trackEvent('wizard_start', {
+                plan: resolvePlanFromUrl() || formData.packageName,
+                attribution_source: attribution.firstTouch.source,
+                attribution_medium: attribution.firstTouch.medium,
+                attribution_campaign: attribution.firstTouch.campaign,
+                gclid: attribution.firstTouch.gclid,
+            });
+        });
+        return () => {
+            active = false;
+        };
+    }, []);
+
+    useEffect(() => {
+        if (currentStep !== AppStep.Payment) return;
+
+        const plan = formData.packageName || 'Essential 360';
+        if (trackedCheckoutPlans.current.has(plan)) return;
+
+        trackedCheckoutPlans.current.add(plan);
+        const checkoutValue = PACKAGES[plan].price + calculateICCTax(formData.socialCapital);
+        trackEvent('begin_checkout', {
+            currency: 'DOP',
+            value: checkoutValue,
+            items: [{ item_name: plan, price: checkoutValue, quantity: 1 }]
+        });
+    }, [currentStep, formData.packageName]);
 
     useEffect(() => {
         if (!auth) {
@@ -333,6 +390,7 @@ const App: React.FC = () => {
             paymentStatus: (exp?.paymentStatus as FormData['paymentStatus']) || 'pending_confirmation',
             paymentMethod: (exp?.paymentMethod as FormData['paymentMethod']) || prev.paymentMethod,
             totalAmount: exp?.totalAmount ?? prev.totalAmount,
+            marketingAttribution: exp?.marketingAttribution || prev.marketingAttribution,
             transferBankName: exp?.transferBankName ?? prev.transferBankName,
             paymentReceipt: exp?.paymentReceipt ?? null,
             logoFile: null,

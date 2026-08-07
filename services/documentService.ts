@@ -199,6 +199,7 @@ export const registrarPagoComoBorrador = async (
         paymentMethod: data.paymentMethod,
         paymentStatus: data.paymentStatus,
         totalAmount: data.totalAmount,
+        marketingAttribution: data.marketingAttribution || null,
         transferBankName: data.transferBankName || null,
         paypalTransactionId: (data as unknown as Record<string, unknown>).paypalTransactionId || null,
         paymentReceipt: typeof data.paymentReceipt === 'string' ? data.paymentReceipt : null
@@ -228,6 +229,7 @@ export interface ExpedienteReanudado {
         paymentStatus: string | null;
         paymentMethod: string | null;
         totalAmount: number | null;
+        marketingAttribution?: AppFormData['marketingAttribution'];
         transferBankName: string | null;
         paymentReceipt: string | null;
         applicant: AppFormData['applicant'] | null;

@@ -227,6 +227,14 @@ const pathToDownloadUrl = async (value) => {
 // Convierte rutas -> URLs en todos los campos de archivo del expediente.
 const resolveStoragePaths = async (datos) => {
   const out = { ...datos };
+  // Sin atribución válida, la clave se omite: escribir null pisaría la
+  // atribución que el borrador ya guardó en el momento del pago.
+  const atribucionLimpia = limpiarAtribucionMarketing(out.marketingAttribution);
+  if (atribucionLimpia) {
+    out.marketingAttribution = atribucionLimpia;
+  } else {
+    delete out.marketingAttribution;
+  }
   out.logoFile = await pathToDownloadUrl(out.logoFile);
   out.onapiCertificate = await pathToDownloadUrl(out.onapiCertificate);
   out.paymentReceipt = await pathToDownloadUrl(out.paymentReceipt);
@@ -297,6 +305,32 @@ const hashPin = (pin) => crypto.createHash('sha256')
 
 const esTexto = (v, max) => typeof v === 'string' && v.length <= max;
 const textoOpcional = (v, max) => (esTexto(v, max) ? v : null);
+
+const limpiarTouchMarketing = (touch) => {
+  if (!touch || typeof touch !== 'object') return null;
+  const out = {};
+  for (const key of ['source', 'medium', 'campaign', 'term', 'content', 'gclid', 'landingPage', 'referrer']) {
+    const value = textoOpcional(touch[key], key === 'landingPage' || key === 'referrer' || key === 'gclid' ? 500 : 200);
+    if (value) out[key] = value;
+  }
+  return Object.keys(out).length ? out : null;
+};
+
+const limpiarAtribucionMarketing = (value) => {
+  if (!value || typeof value !== 'object') return null;
+  const out = {};
+  const firstTouch = limpiarTouchMarketing(value.firstTouch);
+  const lastTouch = limpiarTouchMarketing(value.lastTouch);
+  if (firstTouch) out.firstTouch = firstTouch;
+  if (lastTouch) out.lastTouch = lastTouch;
+  const gaClientId = textoOpcional(value.gaClientId, 120);
+  const gaSessionId = textoOpcional(value.gaSessionId, 80);
+  const capturedAt = textoOpcional(value.capturedAt, 80);
+  if (gaClientId) out.gaClientId = gaClientId;
+  if (gaSessionId) out.gaSessionId = gaSessionId;
+  if (capturedAt) out.capturedAt = capturedAt;
+  return Object.keys(out).length ? out : null;
+};
 
 // ============================================
 // RATE LIMITERS (usando constantes de configuración)
@@ -455,6 +489,10 @@ app.post('/api/registrar-pago', async (req, res) => {
     const existente = await docRef.get();
     if (existente.exists) {
       console.log('🔁 Reintento de registro de pago (idempotencia):', docRef.id);
+      const attribution = limpiarAtribucionMarketing(b.marketingAttribution);
+      if (attribution && !existente.data().marketingAttribution) {
+        await docRef.update({ marketingAttribution: attribution });
+      }
       return responder();
     }
 
@@ -466,6 +504,7 @@ app.post('/api/registrar-pago', async (req, res) => {
       packageName: textoOpcional(b.packageName, 60),
       companyType: textoOpcional(b.companyType, 20),
       totalAmount: typeof b.totalAmount === 'number' ? b.totalAmount : null,
+      marketingAttribution: limpiarAtribucionMarketing(b.marketingAttribution),
       transferBankName: textoOpcional(b.transferBankName, 80),
       paypalTransactionId: textoOpcional(b.paypalTransactionId, 120),
       paymentReceipt: await pathToDownloadUrl(textoOpcional(b.paymentReceipt, 500) || ''),
@@ -536,6 +575,7 @@ app.post('/api/reanudar', async (req, res) => {
         paymentStatus: venta.paymentStatus || null,
         paymentMethod: venta.paymentMethod || null,
         totalAmount: venta.totalAmount || null,
+        marketingAttribution: venta.marketingAttribution || null,
         transferBankName: venta.transferBankName || null,
         paymentReceipt: venta.paymentReceipt || null,
         applicant: venta.applicant || null,

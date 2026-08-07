@@ -1,4 +1,5 @@
 import { PackageName } from './constants';
+import type { MarketingAttribution } from './services/analytics';
 
 export enum AppStep {
     StepTypeSelection,
@@ -95,7 +96,8 @@ export interface FormData {
     applicant: Applicant;
     titulars: Titular[];
     requestDate?: string;
-    packageName?: PackageName; 
+    packageName?: PackageName;
+    marketingAttribution?: MarketingAttribution;
     paymentMethod?: 'transfer' | 'card' | 'paypal' | 'other';
     paymentStatus?: 'unpaid' | 'pending_confirmation' | 'paid';
     // File recién elegido, o string = RUTA en Storage (el comprobante se sube
