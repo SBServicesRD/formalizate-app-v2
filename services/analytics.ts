@@ -12,6 +12,7 @@ export interface MarketingTouch {
 export interface MarketingAttribution {
     firstTouch: MarketingTouch;
     lastTouch: MarketingTouch;
+    leadId?: string;
     gaClientId?: string;
     gaSessionId?: string;
     capturedAt: string;
@@ -30,7 +31,7 @@ const readCookie = (name: string): string | null => {
     return value ? value.slice(prefix.length) : null;
 };
 
-const readStoredAttribution = (): Pick<MarketingAttribution, 'firstTouch' | 'lastTouch'> | null => {
+const readStoredAttribution = (): Pick<MarketingAttribution, 'firstTouch' | 'lastTouch' | 'leadId'> | null => {
     const raw = readCookie(ATTRIBUTION_COOKIE);
     if (!raw) return null;
     try {
@@ -87,9 +88,9 @@ const hasMarketingSignal = (touch: MarketingTouch): boolean => Boolean(
     touch.source || touch.medium || touch.campaign || touch.term || touch.content || touch.gclid
 );
 
-const writeAttributionCookie = (firstTouch: MarketingTouch, lastTouch: MarketingTouch): void => {
+const writeAttributionCookie = (firstTouch: MarketingTouch, lastTouch: MarketingTouch, leadId?: string): void => {
     if (typeof document === 'undefined') return;
-    const value = encodeURIComponent(JSON.stringify({ firstTouch, lastTouch }));
+    const value = encodeURIComponent(JSON.stringify({ firstTouch, lastTouch, ...(leadId ? { leadId } : {}) }));
     document.cookie = `${ATTRIBUTION_COOKIE}=${value}; Max-Age=${COOKIE_MAX_AGE}; Path=/; Domain=.formalizate.app; SameSite=Lax`;
 };
 
@@ -121,7 +122,7 @@ export const captureMarketingAttribution = async (): Promise<MarketingAttributio
     const firstTouch = stored?.firstTouch || current;
     const lastTouch = hasMarketingSignal(current) ? current : (stored?.lastTouch || firstTouch);
     if (hasMarketingSignal(current)) {
-        writeAttributionCookie(firstTouch, lastTouch);
+        writeAttributionCookie(firstTouch, lastTouch, stored?.leadId);
     }
 
     const gtag = (window as Window & { gtag?: Gtag }).gtag;
@@ -132,6 +133,7 @@ export const captureMarketingAttribution = async (): Promise<MarketingAttributio
     return {
         firstTouch,
         lastTouch,
+        ...(stored?.leadId ? { leadId: stored.leadId } : {}),
         ...(gaClientId ? { gaClientId } : {}),
         ...(gaSessionId ? { gaSessionId } : {}),
         capturedAt: new Date().toISOString(),
