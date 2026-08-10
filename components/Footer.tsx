@@ -1,5 +1,6 @@
 import React from 'react';
 import { Lock } from 'lucide-react';
+import { trackWhatsAppLead } from '../services/analytics';
 
 type PageView = 'main' | 'privacy' | 'terms' | 'refund';
 
@@ -19,7 +20,13 @@ const Footer: React.FC<FooterProps> = ({ setPage }) => {
                             </a>
                         </p>
                         <p>
-                            <a href="https://wa.me/18296487176" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                            <a
+                                href="https://wa.me/18296487176"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => trackWhatsAppLead(e.currentTarget, 'cta_whatsapp_wizard_footer')}
+                                className="hover:text-white transition-colors"
+                            >
                                 WhatsApp: (829) 648-7176
                             </a>
                         </p>

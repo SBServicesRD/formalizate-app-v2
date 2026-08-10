@@ -207,7 +207,12 @@ const App: React.FC = () => {
                 attribution_source: attribution.firstTouch.source,
                 attribution_medium: attribution.firstTouch.medium,
                 attribution_campaign: attribution.firstTouch.campaign,
-                gclid: attribution.firstTouch.gclid,
+                // `gclid` es un parámetro RESERVADO en GA4: no se puede registrar
+                // como dimensión personalizada, así que nunca aparecería en un
+                // reporte. Usamos el mismo nombre que emite el servidor en
+                // functions/index.js (emitirPurchaseGA4) para que sea una sola
+                // dimensión de punta a punta.
+                attribution_gclid: attribution.firstTouch.gclid,
             });
         });
         return () => {

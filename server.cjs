@@ -129,6 +129,10 @@ app.use(
           "data:",
           "blob:",                 // Necesario para algunos mapas/imágenes dinámicas
           "https://www.google.com",
+          // Los píxeles de remarketing/listas de usuario de Google Ads salen por el
+          // ccTLD del visitante (RD = google.com.do), no por www.google.com.
+          "https://www.google.com.do",
+          "https://analytics.google.com",
           "https://www.googletagmanager.com",
           "https://*.googleapis.com", // Abarca storage, firebase, etc.
           "https://*.facebook.com",
@@ -142,10 +146,17 @@ app.use(
         connectSrc: [
           "'self'",
           "https://www.google.com",
+          "https://www.google.com.do", // Google redirige al ccTLD local (RD) para pings de Ads
           "https://*.googletagmanager.com",
           "https://*.googleapis.com", // ¡LA CLAVE! Autoriza todo Firebase/Auth/Firestore/Identity
           "https://*.firebase.com",
           "https://*.google-analytics.com",
+          // gtag.js NO manda todo a *.google-analytics.com: cuando sincroniza las
+          // cookies de dominio Google (Google Signals) el hit sale por
+          // analytics.google.com. Sin esta entrada el CSP lo bloqueaba y se
+          // perdían page_view/wizard_start/purchase de la propiedad G-H5NN987LKF.
+          "https://analytics.google.com",
+          "https://*.analytics.google.com",
           "https://*.doubleclick.net",
           "https://*.paypal.com",
           "https://*.clarity.ms",
