@@ -154,7 +154,29 @@ const App: React.FC = () => {
     // aunque su avance estuviera guardado en su propio navegador. Ahora el
     // wizard arranca donde el cliente iba (los archivos se re-adjuntan; los
     // File no sobreviven en localStorage).
-    const estadoGuardado = loadSavedState(null);
+    //
+    // RESCATE de estados terminales: un guardado en Success/Dashboard NO es
+    // progreso, es basura de un expediente YA enviado (ver el efecto de
+    // persistencia más abajo). Restaurarlo dejaba al cliente clavado en
+    // "¡Solicitud enviada exitosamente!" sin salida al intentar una segunda
+    // solicitud. Se descarta el guardado ENTERO, no solo el paso: conservar el
+    // formData de un expediente ya pagado y enviado arrastraría
+    // paymentStatus='paid' a la solicitud nueva y arriesgaría un duplicado.
+    const estadoPersistido = loadSavedState(null);
+    const esEstadoTerminal = estadoPersistido?.currentStep === AppStep.Success
+        || estadoPersistido?.currentStep === AppStep.Dashboard;
+    if (esEstadoTerminal) {
+        // Además de ignorarlo, lo borramos: si el visitante tiene sesión
+        // iniciada el efecto de persistencia escribe bajo la clave del uid y
+        // este blob de invitado (con formData de un expediente ya pagado)
+        // quedaría ahí indefinidamente.
+        try {
+            localStorage.removeItem(getLocalStorageKey(null));
+        } catch {
+            // localStorage bloqueado: el guard de arriba ya evita el atasco.
+        }
+    }
+    const estadoGuardado = esEstadoTerminal ? null : estadoPersistido;
 
     const [currentStep, setCurrentStep] = useState<AppStep>(
         estadoGuardado?.currentStep ?? AppStep.StepTypeSelection
@@ -272,6 +294,18 @@ const App: React.FC = () => {
             // el estado en dos claves y la restauración no lo encontraba.
             const userId = user && !user.isAnonymous ? user.uid : null;
             const storageKey = getLocalStorageKey(userId);
+
+            // El expediente ya se envió: no queda progreso que guardar.
+            // Este efecto corre JUSTO DESPUÉS del setStep(Success) de
+            // handleFinalSubmit, así que su localStorage.removeItem era código
+            // muerto: se deshacía aquí mismo y dejaba `currentStep: Success`
+            // grabado. El cliente que volvía a entrar renacía en la pantalla de
+            // éxito y no podía iniciar otra solicitud.
+            if (currentStep === AppStep.Success || currentStep === AppStep.Dashboard) {
+                localStorage.removeItem(storageKey);
+                return;
+            }
+
             const stateToSave = {
                 formData,
                 currentStep,
