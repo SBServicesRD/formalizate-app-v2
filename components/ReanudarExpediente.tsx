@@ -52,7 +52,7 @@ const ReanudarExpediente: React.FC<ReanudarExpedienteProps> = ({ token, onSucces
                         empresa desde tu Panel de Seguimiento — el acceso te llegó por correo.
                     </p>
                     <a
-                        href="https://dash.formalizate.app"
+                        href="https://formalizate-dash.web.app"
                         className="inline-flex items-center justify-center bg-sbs-blue text-white font-bold py-3.5 px-8 rounded-xl text-sm shadow-lg hover:shadow-xl transition-all"
                     >
                         Ir a mi Panel

@@ -12,7 +12,7 @@ interface DashboardPageProps {
 // El seguimiento en vivo y la aprobación de documentos viven en el panel REAL
 // (dash.formalizate.app). Este panel del wizard da la bienvenida y puentea hacia él
 // — no replica el progreso para evitar mostrar datos congelados/desactualizados.
-const DASHBOARD_URL = 'https://dash.formalizate.app';
+const DASHBOARD_URL = 'https://formalizate-dash.web.app';
 
 const DashboardPage: React.FC<DashboardPageProps> = ({ formData, onExit }) => {
     const companyName = formData.companyName || 'Nueva Empresa S.R.L.';

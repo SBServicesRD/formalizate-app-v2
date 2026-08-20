@@ -412,7 +412,7 @@ const App: React.FC = () => {
     // El panel real del cliente vive en dash.formalizate.app (acceso por
     // enlace+PIN del correo); el panel interno con login murió con las cuentas.
     const abrirPanel = () => {
-        window.location.href = 'https://dash.formalizate.app';
+        window.location.href = 'https://formalizate-dash.web.app';
     }
 
     // Reanudación validada (enlace+PIN correctos): hidrata el formulario con

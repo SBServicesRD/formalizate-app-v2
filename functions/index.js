@@ -47,7 +47,7 @@ async function buildDownloadUrl(objectPath) {
 }
 
 // URLs de los dashboards (configurables via env)
-const CUSTOMER_DASHBOARD_URL = process.env.CUSTOMER_DASHBOARD_URL || "https://dash.formalizate.app";
+const CUSTOMER_DASHBOARD_URL = process.env.CUSTOMER_DASHBOARD_URL || "https://formalizate-dash.web.app";
 const WIZARD_URL = process.env.WIZARD_URL || "https://app.formalizate.app";
 const INVESTOR_DASHBOARD_URL = process.env.INVESTOR_DASHBOARD_URL || "https://investors.formalizate.app";
 const GA4_MEASUREMENT_ID = "G-H5NN987LKF";
