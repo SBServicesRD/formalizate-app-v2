@@ -458,18 +458,16 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ formData, updateFormData, onP
                         )}
                     </button>
 
-                    <button
-                        onClick={() => { setPaymentMethod('paypal'); setTermsAccepted(false); setError(''); }}
-                        className={`relative p-4 rounded-xl border-2 flex flex-col items-center justify-center transition-all ${paymentMethod === 'paypal' ? 'border-[#003087] bg-blue-50/50 shadow-md' : 'border-gray-200 bg-white hover:border-gray-300'}`}
-                    >
+                    {/* PayPal deshabilitado: misma presentación que AZUL y Google Pay.
+                        Al no poder seleccionarse, el bloque de PayPal más abajo queda
+                        inalcanzable y su SDK nunca se monta. */}
+                    <div className="relative p-4 rounded-xl border border-gray-100 bg-gray-50 flex flex-col items-center justify-center opacity-60 cursor-not-allowed">
+                        <span className="absolute top-2 right-2 text-[10px] bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full font-bold">No disponible</span>
                         <div className="w-8 h-8 mb-2 flex items-center justify-center">
-                            <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor"><path d="M7.076 21.337H2.47a.641.641 0 0 1-.633-.74L4.944.901C5.026.382 5.474 0 5.998 0h7.46c2.57 0 4.578.543 5.69 1.81 1.01 1.15 1.304 2.62 1.091 4.498-.596 5.25-3.096 8.137-7.401 8.137H11.07l-1.406 6.135a.66.66 0 0 1-.65.517l-1.938.24z" fill="#003087"/></svg>
+                            <svg className="w-6 h-6 text-gray-400" viewBox="0 0 24 24" fill="currentColor"><path d="M7.076 21.337H2.47a.641.641 0 0 1-.633-.74L4.944.901C5.026.382 5.474 0 5.998 0h7.46c2.57 0 4.578.543 5.69 1.81 1.01 1.15 1.304 2.62 1.091 4.498-.596 5.25-3.096 8.137-7.401 8.137H11.07l-1.406 6.135a.66.66 0 0 1-.65.517l-1.938.24z"/></svg>
                         </div>
-                        <span className="text-sm font-bold text-[#003087]">PayPal</span>
-                        {paymentMethod === 'paypal' && (
-                            <div className="absolute top-2 right-2 w-3 h-3 bg-[#003087] rounded-full"></div>
-                        )}
-                    </button>
+                        <span className="text-sm font-bold text-gray-400">PayPal</span>
+                    </div>
 
                     <div className="relative p-4 rounded-xl border border-gray-100 bg-gray-50 flex flex-col items-center justify-center opacity-60 cursor-not-allowed">
                         <span className="absolute top-2 right-2 text-[10px] bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full font-bold">Pronto</span>
